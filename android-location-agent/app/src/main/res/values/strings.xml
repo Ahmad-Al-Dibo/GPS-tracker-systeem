@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Location Agent</string>
+    <string name="notification_channel">Locatie delen</string>
+    <string name="notification_title">Locatie delen actief</string>
+    <string name="notification_text">Verzenden naar geconfigureerde API\'s</string>
+</resources>
