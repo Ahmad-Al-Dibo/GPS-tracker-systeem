@@ -56,21 +56,24 @@ export async function POST(req: NextRequest) {
         ? d.event_id_alt
         : null;
 
-  // Idempotentie
-  if (eventId) {
-    const existing = await prisma.ingestSource.findFirst({
-      where: { eventId, ownerUserId: userId },
-    });
-    if (existing) {
-      return NextResponse.json({
-        accepted: true,
-        duplicate: true,
-        name: existing.name,
-      });
-    }
-  }
-
+  // Alles wat de DB raakt in één try: een DB-fout tijdens de idempotentie-
+  // check of upsert moet dezelfde nette 500 geven (en geen onbehandelde
+  // throw met stacktrace in de logs).
   try {
+    // Idempotentie: zelfde event_id → geen nieuw punt (herverzending app).
+    if (eventId) {
+      const existing = await prisma.ingestSource.findFirst({
+        where: { eventId, ownerUserId: userId },
+      });
+      if (existing) {
+        return NextResponse.json({
+          accepted: true,
+          duplicate: true,
+          name: existing.name,
+        });
+      }
+    }
+
     // Multi-tenancy: een bron (naam) hoort bij één eigenaar. Een andere
     // key-eigenaar mag een bestaande bron NIET overnemen (takeover-fix).
     const existing = await prisma.ingestSource.findUnique({ where: { name: d.name } });

@@ -18,6 +18,7 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import { TILE_STYLES, type TileStyle } from "@/lib/map-tiles";
+import { formatTime } from "@/lib/format";
 
 export type { TileStyle } from "@/lib/map-tiles";
 
@@ -957,7 +958,7 @@ export default function TrackingMap({
               <br />
               {v.speedKmh != null ? `${v.speedKmh} km/u` : "snelheid —"}
               <br />
-              {new Date(v.observedAt).toLocaleTimeString()}
+              {formatTime(v.observedAt)}
             </Popup>
           </Marker>
         ))}

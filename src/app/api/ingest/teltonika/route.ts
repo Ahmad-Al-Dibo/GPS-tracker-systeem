@@ -112,6 +112,22 @@ export async function POST(req: NextRequest) {
   let lastSpeed = device.lastSpeedMps;
   let accepted = 0;
   let duplicates = 0;
+  // ACK-0-bescherming: een geregistreerd apparaat zonder voertuig-koppeling
+  // zou met ACK 0 de server oneindig laten herverzenden (retry-storm). We
+  // ACK-en de records dan wél (ze zijn immers "verwerkt"), droiten ze bewust
+  // en loggen we luid zodat ops de koppeling kan maken.
+  let quarantined = false;
+
+  if (!vehicle && records.length > 0) {
+    quarantined = true;
+    accepted = records.length;
+    logger.warn("ingest quarantined: device has no vehicle link", {
+      reqId,
+      imei,
+      deviceId: device.id,
+      records: records.length,
+    });
+  }
 
   for (const r of records) {
     // Timestamp normaliseren: ongeldige of absurde waarden (corrupte records)
@@ -120,7 +136,7 @@ export async function POST(req: NextRequest) {
     const sane = !Number.isNaN(t) && t > 946684800000 && t < 4102444800000; // 2000..2100
     const sampledAt = sane ? new Date(t) : receivedAt;
 
-    // Alleen opslaan als er een voertuig gekoppeld is
+    // Zonder voertuig is er geen sourceId om op te slaan (zie quarantined hierboven)
     if (!vehicle) continue;
 
     try {
@@ -163,7 +179,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Device live-status updaten
+  // Device live-status updaten. lastRecordCount atomair incrementen:
+  // een read-modify-write (device.lastRecordCount + accepted) racet bij
+  // gelijktijdige frames en telt records dubbel.
   await prisma.gpsDevice.update({
     where: { id: device.id },
     data: {
@@ -172,7 +190,9 @@ export async function POST(req: NextRequest) {
       lastLat,
       lastLon,
       lastSpeedMps: lastSpeed,
-      lastRecordCount: device.lastRecordCount + accepted,
+      ...(accepted > 0 && !quarantined
+        ? { lastRecordCount: { increment: accepted } }
+        : {}),
     },
   });
 
@@ -244,7 +264,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  logger.info("ingest result", { reqId, imei, accepted, duplicates, total: records.length, vehicleLinked: !!vehicle });
+  logger.info("ingest result", {
+    reqId,
+    imei,
+    accepted,
+    duplicates,
+    total: records.length,
+    vehicleLinked: !!vehicle,
+    quarantined,
+  });
   return NextResponse.json(
     {
     accepted,
@@ -252,6 +280,7 @@ export async function POST(req: NextRequest) {
     total: records.length,
     codec,
     vehicleLinked: !!vehicle,
+    quarantined,
     deviceId: device.id,
     reqId,
     },

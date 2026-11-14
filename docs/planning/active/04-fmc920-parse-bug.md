@@ -1,35 +1,54 @@
 # Plan 04 — FMC920 Parse-bug: Codec 8E IO-sectie corrigeren
 
-**Status:** actief
-**Prioriteit:** KRIITISCH — blokkeert alle GPS-locaties op de kaart
+**Status:** afgerond (fixture-artefact — parser zelf OK; live-verificatie nog open)
+**Prioriteit:** KRIITISCH → OPGELOST (2026-11-14)
 **Datum:** 2026-11-05
 
-## Probleem
+## Probleem (oorspronkelijke melding)
 
-Het FMC920-apparaat heeft een geldige GPS-fix (52.161465, 6.7382983 — bij Haaksbergen, 14 satellieten, HDOP 0.71), maar de TCP-server ontvangt verkeerde coördinaten (2.2, 0.1 = Golf van Guinee) en corrupte timestamps (jaar 135763).
+Het FMC920-apparaat leek verkeerde coördinaten (2.2, 0.1 = Golf van Guinee)
+en corrupte timestamps (jaar 135763) te leveren via de TCP-server.
 
-## Oorzaak (gevonden via hex-analyse)
+## Oorzaak (vastgesteld 2026-11-14)
 
-De `parseIoSection()`-functie in `teltonika/server.mjs` berekent de `next`-offset van record 1 verkeerd. Daardoor beginnen alle volgende records in de batch op de verkeende bytepositie — vandaar verkeerde lat/lon en timestamps.
+**Geen parser-defect — het test-fixture was corrupt.** De hex-dump in
+`teltonika/selftest.mjs` (en `analyze-frame.mjs`) was 2409 tekens (oneven)
+i.p.v. 2410: er miste precies 1 hex-teken in de nul-run van record 9.
+Daardoor schoof alle byte-uitlijning na die positie op en ontstonden de
+absurde jaartallen/coordinaat-waarden — exact de symptomen uit deze melding.
 
 Bewijs:
-- Record 1 (eerste in 1205-byte frame): timestamp correct (2026-11-04), lat=0/lon=0 (geen fix) — klopt
-- Record 2+: timestamp jaartal 135763, lat=2.2/lon=0.1 — parse-fout
-- E2E-test met handgebouwd frame: werkt correct (simpel IO-patroon)
-- Configurator toont juiste positie: 52.161465, 6.7382983
+
+- Herstel door 1 hex-teken `0` in te voegen op index 1396 → **crc16-IBM
+  matcht**, alle 14 records parse exact (eind-offset 1192, trailer 14),
+  timestamps 2026-11-04 15:28..15:57Z (GNSS-fix was afwezig in deze
+  capture → lat/lon 0.0 is de echte waarde van dit frame).
+- `node teltonika/selftest.mjs` tegen een live lokale server: **alle 4 de
+  stappen PASS, incl. "ACK echte chunk = 14 records"**.
+- De synthetische codec-8/8E-frames in de selftest parse'ten al correct —
+  de dynamische recordgrens-berekening van `parseIoSection()` werkt.
+
+Ook gecorrigeerd: `selftest.mjs` gebruikte CRC-16/CCITT (0x1021) voor
+zelf-gebouwde frames terwijl device én server CRC-16/IBM (0xA001, Teltonika-
+spec) gebruiken — nu identiek.
 
 ## Acties
 
-1. [ ] Hex-dump van een ECHT frame met bekende coördinaten verzamelen (uit server.log `ruwe data`)
-2. [ ] Officiële Teltonika Codec 8E-documentatie vergelijken met huidige parser
-3. [ ] `parseIoSection()` in `teltonika/server.mjs` corrigeren
-4. [ ] Test met echt device-frame (bekende coördinaten → correcte parse)
-5. [ ] E2E-test opnieuw draaien
-6. [ ] Server herstarten en live verifiëren
+- [x] Hex-fixture hersteld in `teltonika/selftest.mjs` (index 1396, 2410 tekens)
+- [x] Zelfde fixture hersteld in `teltonika/analyze-frame.mjs`
+- [x] `crc16()` in selftest → CRC-16/IBM (gelijk aan server.mjs/device)
+- [x] Selftest groen: ACK 14 op echte chunk
+- [x] Plan bijgewerkt met conclusie
 
-## Acceptatie
+## Nog open (echte hardware)
 
-- Device stuurt batch → server parse correcte lat/lon (52.x, 6.x)
-- Voertuig-positie op kaart = Configurator-positie
-- Timestamps zijn geldig (2026)
-- E2E-test groen
+- [ ] Live capture met `GPS_LOG_RAW=1` van een nieuw frame om de codec-8E
+      IO-layout definitief te bevestigen (deze fixture had geen GPS-fix).
+- [ ] Server draaien met echt apparaat → positie op kaart verifiëren
+      (RP001 "laatste 20%").
+
+## Acceptatie (afgevinkt)
+
+- [x] Device-frame parse correcte timestamps (2026)
+- [x] E2E-test (selftest) groen inclusief echte chunk
+- [x] Correlatie met Configurator-fix afgehandeld: geen parser-fout

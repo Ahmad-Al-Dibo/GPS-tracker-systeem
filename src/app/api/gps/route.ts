@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 
+// DEBUG-ENDPOINT (experimentele Python-listener): bewaart alleen het laatste
+// record in memory — GEEN database-write, dus geen productiepad.
+// Session-protected via proxy default-deny; payload wordt NIET gelogd
+// (locatiegegevens horen niet ongefilterd in stdout).
 let latestRecord: unknown = null;
 
 export const dynamic = "force-dynamic";
@@ -17,8 +21,6 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-
-  console.log("[api/gps] Received GPS data:", latestRecord);
 
   return NextResponse.json({ accepted: true });
 }

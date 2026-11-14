@@ -289,6 +289,9 @@ model IngestPoint {
 
   @@index([sourceId, sampledAt])
   @@index([deviceId, sampledAt])
+  /// Retention-job (runRetentionCleanup) filtert op receivedAt < cutoff —
+  /// zonder deze index wordt de grootste tabel elke run gescand.
+  @@index([receivedAt])
   /// Dedupe-haspel: alleen hardware-records (deviceId gevuld) worden op hash
   /// beschermd; NULL-hash/-deviceId = legacy/software, geen restrictie.
   @@unique([deviceId, recordHash])
@@ -453,7 +456,9 @@ model Event {
   tasks    Task[]
 
   @@index([vehicleId, startTime])
-  @@index([status])
+  /// Retention filtert status IN (…) AND createdAt < cutoff — composite
+  /// (links-prefix status) dekt beide queries; vervangt losse status-index.
+  @@index([status, createdAt])
   @@index([severity])
   @@map("events")
 }

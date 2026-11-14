@@ -46,6 +46,13 @@ export function calculateDistanceDelta(
   const distanceM = haversineDistance(prevLat, prevLon, newLat, newLon);
   const timeGapS = (newAt.getTime() - prevAt.getTime()) / 1000;
 
+  // Out-of-order punt (oudere timestamp dan het laatste berekende punt):
+  // afstand niet optellen — een teruggevallen klok of herverzonden batch
+  // mag de km-stand niet opblazen.
+  if (timeGapS < 0) {
+    return { distanceM: 0, isMoving: false };
+  }
+
   // Grote sprong in tijd of afstand — niet als doorlopende rit rekenen
   if (timeGapS > MAX_TIME_GAP_S || distanceM > MAX_GAP_M) {
     return { distanceM: 0, isMoving: distanceM >= MIN_MOVEMENT_M };
