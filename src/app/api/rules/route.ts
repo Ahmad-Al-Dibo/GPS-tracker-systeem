@@ -41,7 +41,7 @@ const ruleCreateSchema = z.object({
 });
 
 export async function GET() {
-  const { auth, res } = await requireAuth();
+  const { res } = await requireAuth();
   if (res) return res;
 
   const rules = await prisma.rule.findMany({

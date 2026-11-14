@@ -54,7 +54,7 @@ export default function MapFilterControl({
   const activeCount = layers.filter((l) => state[l.key]).length;
 
   return (
-    <div ref={ref} className="absolute right-3 top-[4.75rem] z-[10]">
+    <div ref={ref} className="absolute right-3 top-[3.75rem] z-[10]">
       <button
         onClick={() => setOpen(!open)}
         className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"

@@ -8,8 +8,12 @@ export default function HomePage () {
       <header className='sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur'>
         <div className='mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8'>
           <Link href='/' className='flex items-center gap-3'>
-            <span className='flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-xl text-white shadow-sm'>
-              📍
+            <span className='home-brand-mark flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-sm'>
+              <svg viewBox='0 0 36 36' fill='none' aria-hidden='true'>
+                <path d='M18 33s11-10.2 11-19A11 11 0 0 0 7 14c0 8.8 11 19 11 19Z' fill='currentColor' />
+                <circle cx='18' cy='14' r='4' fill='#10203a' />
+                <path d='M25 5a13 13 0 0 1 6 6M27 1a18 18 0 0 1 8 8' stroke='currentColor' strokeWidth='2' strokeLinecap='round' />
+              </svg>
             </span>
             <div>
               <span className='block text-base font-bold text-slate-900'>
@@ -352,7 +356,7 @@ export default function HomePage () {
                     value: 'Historische inzichten',
                     icon: '📊'
                   }
-                ].map((item, index) => (
+                ].map((item) => (
                   <div
                     key={item.label}
                     className='flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-4'

@@ -92,6 +92,8 @@ type Props = {
   routeLine?: RouteVisualization | null;
   /** Selectie-actie uit de zoekbalk ("Opslaan als locatie") */
   onSaveSelection?: (sel: SelectionMarker) => void;
+  /** Rechtermuisknop → "Opslaan als locatie" */
+  onSaveAsLocation?: (sel: SelectionMarker) => void;
   /** Legenda tonen */
   showLegend?: boolean;
   /** Extra legenda-items (door pagina aangeleverd) */
@@ -212,6 +214,97 @@ function ClickHandler({ onMapClick }: { onMapClick?: () => void }) {
   return null;
 }
 
+// ─── Rechtermuisknop-contextmenu op de kaart ───
+
+type ContextMenuState = {
+  pos: [number, number]; // screen-coördinaten
+  latLng: [number, number]; // geo-coördinaten
+} | null;
+
+function ContextMenuHandler({
+  onSaveAsLocation,
+}: {
+  onSaveAsLocation?: (sel: SelectionMarker) => void;
+}) {
+  const map = useMap();
+  const [menu, setMenu] = useState<ContextMenuState>(null);
+
+  useEffect(() => {
+    const onContextMenu = (e: L.LeafletMouseEvent) => {
+      L.DomEvent.stop(e.originalEvent);
+      setMenu({
+        pos: [e.containerPoint.x, e.containerPoint.y],
+        latLng: [e.latlng.lat, e.latlng.lng],
+      });
+    };
+    const onLeftClick = () => setMenu(null);
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(null);
+    };
+    map.on("contextmenu", onContextMenu);
+    map.on("click", onLeftClick);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      map.off("contextmenu", onContextMenu);
+      map.off("click", onLeftClick);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [map]);
+
+  if (!menu) return null;
+
+  const [lat, lon] = menu.latLng;
+
+  const handleSave = () => {
+    const label = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+    onSaveAsLocation?.({ pos: menu.latLng, label });
+    setMenu(null);
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard?.writeText(`${lat.toFixed(6)}, ${lon.toFixed(6)}`).catch(() => {});
+    setMenu(null);
+  };
+
+  const handleSearchHere = () => {
+    map.flyTo(menu.latLng, 15, { duration: 0.6 });
+    setMenu(null);
+  };
+
+  return (
+    <div
+      className="absolute z-[50] min-w-[200px] rounded-lg border border-slate-200 bg-white py-1 shadow-xl"
+      style={{
+        left: Math.min(menu.pos[0], map.getContainer().clientWidth - 210),
+        top: Math.min(menu.pos[1], map.getContainer().clientHeight - 160),
+      }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <div className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-slate-400">
+        {lat.toFixed(5)}, {lon.toFixed(5)}
+      </div>
+      <button
+        onClick={handleSave}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50"
+      >
+        💾 <span className="font-medium">Opslaan als locatie</span>
+      </button>
+      <button
+        onClick={handleSearchHere}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50"
+      >
+        🔍 <span>Zoom hier naartoe</span>
+      </button>
+      <button
+        onClick={handleCopy}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50"
+      >
+        📋 <span>Coördinaten kopiëren</span>
+      </button>
+    </div>
+  );
+}
+
 // ─── Plaatszoeker (server-proxy /api/geocode — Photon/Nominatim) ───
 // Betrouwbaarheid: Enter zoekt direct (ook zonder resultaten), sequentie-
 // guard tegen stale responses, toetsenbordbediening, Escape sluit.
@@ -238,7 +331,6 @@ function SearchControl({
   const [error, setError] = useState<string | null>(null);
   const [marker, setMarker] = useState<SelectionMarker | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Sequentie-guard: alleen de nieuwste zoekopdracht mag state bijwerken
   const seqRef = useRef(0);
 
   const runSearch = useCallback(
@@ -255,7 +347,7 @@ function SearchControl({
       try {
         const res = await fetch(`/api/geocode?q=${encodeURIComponent(trimmed)}`);
         const data = await res.json().catch(() => null);
-        if (seq !== seqRef.current) return; // verouderd antwoord — negeren
+        if (seq !== seqRef.current) return;
         if (!res.ok) {
           setError(data?.error ?? `Zoeken mislukt (${res.status})`);
           setResults([]);
@@ -288,7 +380,6 @@ function SearchControl({
     []
   );
 
-  // Debounce tijdens typen (suggesties)
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     const q = query.trim();
@@ -322,7 +413,6 @@ function SearchControl({
     [map]
   );
 
-  /** Enter/knop: coördinaten → direct; anders resultaten; anders direct zoeken. */
   const submit = useCallback(async () => {
     const q = query.trim();
     const coordMatch = q.match(
@@ -341,7 +431,6 @@ function SearchControl({
       navigateTo(pick.pos, pick.label);
       return;
     }
-    // Nog geen resultaten: zoek nu direct (bypass debounce) en pak het eerste
     const seq = ++seqRef.current;
     setSearching(true);
     setError(null);
@@ -388,7 +477,7 @@ function SearchControl({
 
   return (
     <>
-      <div className="absolute left-3 top-3 z-[10] w-[min(360px,calc(100%-5.5rem))]">
+      <div className="absolute left-3 top-3 z-[10] w-[calc(100%-5.25rem)] max-w-[360px]">
         <div className="relative">
           <div className="flex gap-1">
             <input
@@ -460,29 +549,40 @@ function SearchControl({
       {marker && (
         <Marker position={marker.pos} icon={pinIcon}>
           <Popup>
-            <strong style={{ fontSize: 13 }}>{marker.label}</strong>
-            <br />
-            <span style={{ fontSize: 12, color: "#64748b" }}>
-              {marker.pos[0].toFixed(5)}, {marker.pos[1].toFixed(5)}
-            </span>
-            <br />
-            <span style={{ fontSize: 11, color: "#94a3b8" }}>Tijdelijke selectie</span>
-            <br />
-            <button
-              onClick={() => onSaveSelection?.(marker)}
-              style={{
-                marginTop: 6,
-                background: "#2563eb",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "4px 10px",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              💾 Opslaan als locatie
-            </button>
+            <div style={{ minWidth: 200 }}>
+              <strong style={{ fontSize: 13 }}>{marker.label}</strong>
+              <br />
+              <span style={{ fontSize: 12, color: "#64748b" }}>
+                {marker.pos[0].toFixed(5)}, {marker.pos[1].toFixed(5)}
+              </span>
+              <br />
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>Tijdelijke selectie</span>
+              <br />
+              <button
+                data-save-location="1"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onSaveSelection?.(marker);
+                }}
+                style={{
+                  marginTop: 6,
+                  background: "#2563eb",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "6px 14px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                💾 Opslaan als locatie
+              </button>
+            </div>
           </Popup>
         </Marker>
       )}
@@ -533,9 +633,9 @@ function LocateButton() {
         onClick={locate}
         disabled={busy}
         title="Ga naar mijn locatie (browser-GPS)"
-        className="absolute right-3 top-[3.25rem] z-[10] flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+        className="absolute right-3 top-3 z-[10] flex h-9 w-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 sm:w-auto sm:px-3"
       >
-        🎯 {busy ? "Bepalen…" : "Mijn locatie"}
+        ◎<span className="hidden sm:inline">{busy ? "Bepalen…" : "Mijn locatie"}</span>
       </button>
 
       {pos && (
@@ -596,9 +696,9 @@ function MapLegend({
   if (items.length === 0) return null;
 
   return (
-    <div className="absolute bottom-3 left-3 z-[10] rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
+    <div className="absolute bottom-3 left-3 z-[10] max-w-[46vw] rounded-lg border border-slate-200 bg-white/95 px-2.5 py-1.5 text-[10px] shadow-sm backdrop-blur sm:max-w-none sm:px-3 sm:py-2 sm:text-xs">
       <p className="mb-1 font-semibold text-slate-700">Legenda</p>
-      <ul className="flex flex-col gap-1">
+      <ul className="flex flex-col gap-0.5 sm:gap-1">
         {items.map((it, i) => (
           <li key={i} className="flex items-center gap-1.5 text-slate-600">
             {it.icon ? (
@@ -633,6 +733,7 @@ export default function TrackingMap({
   locations = [],
   routeLine = null,
   onSaveSelection,
+  onSaveAsLocation,
   showLegend = false,
   legendExtra = [],
 }: Props) {
@@ -732,6 +833,7 @@ export default function TrackingMap({
         <MapController vehicles={vehicles} selectedId={selectedId} followId={followId} />
         <ClickHandler onMapClick={onMapClick} />
         <SearchControl onSaveSelection={onSaveSelection} />
+        <ContextMenuHandler onSaveAsLocation={onSaveAsLocation} />
         <LocateButton />
 
         {trailPath.length > 1 && (

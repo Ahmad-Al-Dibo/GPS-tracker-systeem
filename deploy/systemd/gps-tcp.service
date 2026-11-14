@@ -1,0 +1,28 @@
+[Unit]
+Description=GPS Tracking Platform - Teltonika AVL TCP listener
+After=network-online.target gps-web.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gps
+Group=gps
+WorkingDirectory=/opt/gps-tracking-system
+EnvironmentFile=/etc/gps-tracking/gps-tcp.env
+ExecStart=/usr/bin/node /opt/gps-tracking-system/teltonika/server.mjs
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gps-tcp
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

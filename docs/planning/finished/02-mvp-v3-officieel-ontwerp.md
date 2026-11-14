@@ -1,6 +1,6 @@
 # MVP Plan v3 — Officieel technisch ontwerp
 
-**Status:** actief  
+**Status:** afgerond (2026-11-05) — ontwerp geimplementeerd  
 **Datum:** 2026-10-11  
 **Leidend document:** `docs/GPS_Tracking_Platform_Technisch_Ontwerp_Testplan.docx` (v1.0)  
 **Vervangt/uitbreidt:** `01-mvp-v2-heartbeat-sharing.md` (heartbeat-basis blijft behouden)

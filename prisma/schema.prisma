@@ -84,6 +84,17 @@ enum JobRunStatus {
   failed
 }
 
+enum DeviceStatus {
+  pending
+  active
+  revoked
+}
+
+enum DeviceType {
+  HARDWARE
+  SOFTWARE
+}
+
 // ─── Users & Auth (bestaand, uitgebreid) ────────────────
 
 model User {
@@ -107,6 +118,7 @@ model User {
   vehiclesDeleted IngestSource[] @relation("VehicleDeletedBy")
   locationsCreated ManagedLocation[] @relation("LocationCreatedBy")
   routesCreated   Route[]       @relation("RouteCreatedBy")
+  devicesOwned    GpsDevice[]
 
   @@map("users")
 }
@@ -200,6 +212,7 @@ model IngestSource {
   events   Event[]
   tasks    Task[]
   persons  VehiclePerson[]
+  devices  GpsDevice[]
 
   @@index([ownerUserId])
   @@index([vehicleGroup])
@@ -259,10 +272,81 @@ model IngestPoint {
   sampledAt      DateTime @map("sampled_at")
   receivedAt     DateTime @default(now()) @map("received_at")
 
+  // �"?�"? Hardware/AVL-velden (Teltonika FMC920 e.d.) �"?�"?__
+  deviceId       String?  @map("device_id") @db.Uuid
+  altitude       Float?
+  heading        Float?   /// Hoek in graden (0-360)
+  satellites     Int?
+  priority       Int?
+  /// Genormaliseerde IO-elementen: [{id, value, size}]
+  ioData         Json?    @map("io_data")
+  /// Content-hash (SHA-256) van de canonische recordvelden — dedupe bij
+  /// herverzending door het device (geen record-ID in Teltonika-protocol).
+  recordHash     String?  @map("record_hash")
+
   source IngestSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  device GpsDevice?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
   @@index([sourceId, sampledAt])
+  @@index([deviceId, sampledAt])
+  /// Dedupe-haspel: alleen hardware-records (deviceId gevuld) worden op hash
+  /// beschermd; NULL-hash/-deviceId = legacy/software, geen restrictie.
+  @@unique([deviceId, recordHash])
   @@map("ingest_points")
+}
+
+// �"?�"?�"? GPS-hardware apparaten (US-05/US-06/US-12) �"?�"?�"?
+
+model GpsDevice {
+  id            String       @id @default(uuid()) @db.Uuid
+  /// HARDWARE = fysieke tracker (IMEI); SOFTWARE = simulator (simulatorId).
+  deviceType    DeviceType   @default(HARDWARE) @map("device_type")
+  /// Unieke hardware-identificatie (Teltonika IMEI) — NIET de primaire sleutel.
+  /// Nullable voor SOFTWARE-apparaten.
+  imei          String?      @unique /// Unieke device-identificatie (Teltonika IMEI)
+  /// Unieke identificatie voor software-trackers/simulators.
+  simulatorId   String?      @unique @map("simulator_id")
+  label         String?
+  brand         String?      @default("Teltonika")
+  model         String?
+  simCardNumber String?      @map("sim_card_number")
+  firmware      String?
+  /// Protocol: "codec8" | "codec8e" | "codec16"
+  protocol      String?      @default("codec8e")
+
+  // �"?�"? Autorisatie & lifecycle �"?�"?__
+  status        DeviceStatus @default(pending)
+  authorizedAt  DateTime?    @map("authorized_at")
+  revokedAt     DateTime?    @map("revoked_at")
+
+  // �"?�"? Eigenaarschap (multi-tenancy) �"?�"?__
+  ownerUserId   String?      @map("owner_user_id") @db.Uuid
+
+  // �"?�"? Koppeling aan voertuig (US-06) �"?�"?__
+  vehicleId     String?      @map("vehicle_id") @db.Uuid
+  assignedAt    DateTime?    @map("assigned_at")
+
+  // �"?�"? Live device-status �"?�"?__
+  lastSeenAt      DateTime? @map("last_seen_at")      /// Laatste TCP-verbinding/pakket
+  lastLat         Float?    @map("last_lat")
+  lastLon         Float?    @map("last_lon")
+  lastSpeedMps    Float?    @map("last_speed_mps")
+  lastFixAt       DateTime? @map("last_fix_at")       /// Laatste geldige GNSS-fix
+  lastRecordCount Int       @default(0) @map("last_record_count")
+
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  vehicle IngestSource? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  owner   User?         @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  points  IngestPoint[]
+
+  @@index([vehicleId])
+  @@index([status])
+  @@index([lastSeenAt])
+  @@index([ownerUserId])
+  @@map("gps_devices")
 }
 
 // ─── Rules ──────────────────────────────────────────────

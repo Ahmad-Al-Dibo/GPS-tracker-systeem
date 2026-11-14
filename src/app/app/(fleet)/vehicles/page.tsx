@@ -240,8 +240,8 @@ export default function VehiclesPage() {
                   </td>
                   <td className="px-4 py-3">
                     <button onClick={(e) => { e.stopPropagation(); router.push(`/app/vehicles/${v.id}`); }}
-                      className="text-sm font-medium text-blue-600 hover:text-blue-700">
-                      Details →
+                      className="whitespace-nowrap text-sm font-medium text-blue-600 hover:text-blue-700">
+                      Details<span className="hidden sm:inline"> →</span>
                     </button>
                   </td>
                 </tr>

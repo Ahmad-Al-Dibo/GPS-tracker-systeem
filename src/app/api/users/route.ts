@@ -1,11 +1,11 @@
 // Users API: beheer (admin only)
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireAuth, requireAdmin } from "@/lib/api-helpers";
+import { requireAdmin } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
 
 export async function GET() {
-  const { auth, res } = await requireAdmin();
+  const { res } = await requireAdmin();
   if (res) return res;
 
   const users = await prisma.user.findMany({

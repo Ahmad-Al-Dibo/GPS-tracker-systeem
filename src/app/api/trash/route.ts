@@ -13,7 +13,11 @@ export async function GET(req: NextRequest) {
 
   if (type === "vehicles") {
     const vehicles = await prisma.ingestSource.findMany({
-      where: { deletedAt: { not: null } },
+      where: {
+        deletedAt: { not: null },
+        // Multi-tenancy: admin alles, gebruiker alleen eigen verwijderde voertuigen
+        ...(auth!.user.role === "admin" ? {} : { ownerUserId: auth!.user.id }),
+      },
       include: {
         deletedByUser: { select: { username: true } },
         _count: { select: { points: true, events: true, tasks: true, persons: true } },

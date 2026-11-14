@@ -1,0 +1,32 @@
+[Unit]
+Description=GPS Tracking Platform - Web application (Next.js)
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=gps
+Group=gps
+WorkingDirectory=/opt/gps-tracking-system
+EnvironmentFile=/etc/gps-tracking/gps-web.env
+# Build eenmalig vooraf: npm ci && npx prisma migrate deploy && npm run build
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+# Logging naar journald (structured JSON uit de app)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gps-web
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/gps-tracking-system/.next
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

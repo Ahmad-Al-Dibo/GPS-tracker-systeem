@@ -2,7 +2,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAuth } from "@/lib/auth-session";
-import { STALE_MS } from "@/lib/config";
+import {
+  sourceTrackingState,
+  legacyStatusLabel,
+  liveSpeedKmh,
+  lastKnownSpeedKmh,
+} from "@/lib/tracking-state";
 
 export async function GET() {
   const auth = await getAuth();
@@ -20,27 +25,28 @@ export async function GET() {
   });
 
   const list = sources.map((s) => {
-    const ageMs = now - s.receivedAt.getTime();
-    const status =
-      s.latitude == null ? "no_fix" : ageMs > STALE_MS ? "stale" : "fresh";
-    const speedKmh =
-      s.speedMps != null ? Math.round(s.speedMps * 3.6 * 10) / 10 : null;
+    const trackingState = sourceTrackingState(s);
+    const speedLiveKmh = liveSpeedKmh(trackingState, s.speedMps);
     return {
       id: s.id,
       name: s.name,
       displayName: s.displayName ?? s.name,
-      iconEmoji: s.iconEmoji ?? "📍",
+      iconEmoji: s.iconEmoji ?? "🚚",
       description: s.description,
       latitude: s.latitude,
       longitude: s.longitude,
       accuracyMeters: s.accuracyMeters,
       speedMps: s.speedMps,
-      speedKmh,
-      moving: s.speedMps != null && s.speedMps >= 1.0,
+      // SPEED-CONTRACT: speedKmh = alleen live snelheid (null als niet vers).
+      speedKmh: speedLiveKmh,
+      lastSpeedKmh: lastKnownSpeedKmh(s.speedMps),
+      moving: speedLiveKmh != null && s.speedMps != null && s.speedMps >= 1.0,
       sampledAt: s.sampledAt?.toISOString() ?? null,
       receivedAt: s.receivedAt.toISOString(),
-      status,
-      ageSeconds: Math.round(ageMs / 1000),
+      // status = legacy-label (fresh/stale/no_fix); trackingState = centrale staat
+      status: legacyStatusLabel(trackingState),
+      trackingState,
+      ageSeconds: Math.round((now - s.receivedAt.getTime()) / 1000),
     };
   });
 

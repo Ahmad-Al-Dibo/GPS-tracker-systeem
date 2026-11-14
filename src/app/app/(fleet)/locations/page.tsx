@@ -166,6 +166,7 @@ export default function LocationsPage() {
 
   // ── Kaartselectie (zoekopdracht → opslaan) ──
   const pendingSelectionRef = useRef<SelectionMarker | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
 
   const loadLocations = useCallback(async () => {
     const params = new URLSearchParams({ status: statusFilter });
@@ -256,6 +257,10 @@ export default function LocationsPage() {
       });
       pendingSelectionRef.current = null;
     }
+    // Scroll naar het formulier zodat het zichtbaar is
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   function openEditForm(l: ManagedLocation) {
@@ -730,26 +735,29 @@ Tijdelijke locatie,"Stationsstraat 12, Enschede",temporary,2026-12-25T18:00:00,"
         }
       : null;
 
-  const onSaveSelection = useCallback((sel: SelectionMarker) => {
-    if (tab === "routes") {
+  const onSaveSelection = useCallback(
+    (sel: SelectionMarker) => {
+      if (tab === "routes") {
+        pendingSelectionRef.current = sel;
+        setRoutePoints((pts) => [
+          ...pts,
+          {
+            locationId: null,
+            name: sel.label,
+            address: sel.label,
+            latitude: sel.pos[0],
+            longitude: sel.pos[1],
+          },
+        ]);
+        setRouteRoad(null);
+        setRouteRoadInfo(null);
+        return;
+      }
       pendingSelectionRef.current = sel;
-      setRoutePoints((pts) => [
-        ...pts,
-        {
-          locationId: null,
-          name: sel.label,
-          address: sel.label,
-          latitude: sel.pos[0],
-          longitude: sel.pos[1],
-        },
-      ]);
-      setRouteRoad(null);
-      setRouteRoadInfo(null);
-      return;
-    }
-    pendingSelectionRef.current = sel;
       openCreateForm();
-  }, [tab]);
+    },
+    [tab]
+  );
 
   const statusOptions: { value: typeof statusFilter; label: string }[] = [
     { value: "active", label: "Actief" },
@@ -822,6 +830,7 @@ Tijdelijke locatie,"Stationsstraat 12, Enschede",temporary,2026-12-25T18:00:00,"
           locations={visible.vehicles ? activeLocationsForMap : activeLocationsForMap}
           routeLine={visible.route ? routeVisualization : null}
           onSaveSelection={onSaveSelection}
+          onSaveAsLocation={onSaveSelection}
           showLegend
         />
         <MapFilterControl
@@ -836,7 +845,7 @@ Tijdelijke locatie,"Stationsstraat 12, Enschede",temporary,2026-12-25T18:00:00,"
         <>
           {/* Formulier */}
           {showForm && (
-            <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:p-5">
+            <div ref={formRef} className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:p-5">
               <h2 className="mb-4 font-semibold text-slate-900">
                 {editingId ? "Locatie bewerken" : "Nieuwe locatie"}
               </h2>

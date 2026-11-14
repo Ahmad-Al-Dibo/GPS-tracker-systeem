@@ -11,7 +11,7 @@ import type { MapZone, MapLocation, SelectionMarker } from "@/components/trackin
 const TrackingMap = dynamic(() => import("@/components/tracking-map"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full items-center justify-center bg-slate-900 text-slate-400">
+    <div className="flex h-full items-center justify-center bg-gradient-to-br from-blue-50 to-slate-100 text-slate-500">
       Kaart laden…
     </div>
   ),
@@ -25,6 +25,8 @@ type Source = {
   latitude: number | null;
   longitude: number | null;
   speedKmh: number | null;
+  lastSpeedKmh: number | null;
+  trackingState: string;
   moving: boolean;
   status: string;
   sampledAt: string | null;
@@ -295,84 +297,112 @@ export default function LiveMapPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-col gap-2 border-b border-slate-800 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* Header met gradient — stapelt netjes op mobiel */}
+      <div className="flex flex-col gap-3 border-b border-blue-100 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div>
-          <h1 className="text-xl font-bold">Live Kaart</h1>
-          <p className="text-sm text-slate-400">
+          <h1 className="text-lg font-bold text-white drop-shadow-sm sm:text-xl">Live Kaart</h1>
+          <p className="text-xs text-blue-100 sm:text-sm">
             {sources.length} voertuigen · {sources.filter((s) => s.moving).length} bewegend
           </p>
         </div>
-        <div className="flex flex-col items-start gap-1 sm:items-end">
+        <div className="flex flex-row flex-wrap items-center gap-2">
           <button
             onClick={() => (sharing ? stopShare() : void startShare())}
-            className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+            className={`flex min-h-[42px] flex-1 items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm transition sm:flex-none ${
               sharing
-                ? "bg-red-600 text-white hover:bg-red-700"
-                : "bg-emerald-600 text-white hover:bg-emerald-700"
+                ? "bg-red-500 text-white hover:bg-red-600"
+                : "bg-white text-blue-700 hover:bg-blue-50"
             }`}
           >
-            {sharing ? "■ Stop delen" : "📡 Deel mijn locatie"}
+            {sharing ? "■ Stop delen" : "◎ Deel mijn locatie"}
           </button>
           {shareStatus && (
-            <p className="text-xs text-slate-400">{shareStatus}</p>
+            <p className="w-full rounded-lg bg-white/15 px-2.5 py-1.5 text-xs text-white backdrop-blur-sm sm:w-auto">{shareStatus}</p>
           )}
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[300px_1fr]">
-        <aside className="overflow-y-auto border-r border-slate-800 p-3">
+      {/* Mobiel: kaart eerst (vaste hoogte), lijst eronder. Desktop: lijst links, kaart rechts. */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[320px_1fr]">
+        {/* Voertuigenlijst — licht thema, begrensde hoogte op mobiel */}
+        <aside className="max-h-[38vh] overflow-y-auto border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white p-3 order-2 lg:order-1 lg:max-h-none lg:border-b-0 lg:border-r">
           <ul className="flex flex-col gap-2">
             {sources.map((s) => (
               <li
                 key={s.id}
-                className={`cursor-pointer rounded-xl border p-3 text-sm ${
+                className={`cursor-pointer overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
                   selectedId === s.id
-                    ? "border-sky-600 bg-sky-950/40"
-                    : "border-slate-800 bg-slate-900/60 hover:border-slate-600"
+                    ? "border-blue-400 ring-2 ring-blue-100"
+                    : "border-slate-200 hover:border-blue-200"
                 }`}
                 onClick={() => void selectSource(s.id)}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span>{s.iconEmoji}</span>
-                    <span className="font-medium">{s.displayName}</span>
-                  </div>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs ${
+                <div
+                  className="h-1"
+                  style={{
+                    background:
                       s.status === "fresh"
-                        ? "bg-emerald-500/20 text-emerald-300"
+                        ? "linear-gradient(90deg, #16a34a, #4ade80)"
                         : s.status === "stale"
-                          ? "bg-amber-500/20 text-amber-300"
-                          : "bg-slate-500/20 text-slate-300"
+                          ? "linear-gradient(90deg, #d97706, #fbbf24)"
+                          : "linear-gradient(90deg, #cbd5e1, #e2e8f0)",
+                  }}
+                />
+                <div className="p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-gradient-to-br from-blue-50 to-indigo-100 text-lg">
+                        {s.iconEmoji}
+                      </span>
+                      <span className="truncate font-medium text-slate-800">{s.displayName}</span>
+                    </div>
+                    <span
+                      className={`flex-none rounded-full px-2 py-0.5 text-xs font-medium ${
+                        s.status === "fresh"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : s.status === "stale"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {s.status === "fresh" ? "Online" : s.status === "stale" ? "Verouderd" : "Offline"}
+                    </span>
+                  </div>
+                  {s.speedKmh != null ? (
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      {s.moving ? "▸" : "▪"} {s.speedKmh} km/u
+                    </p>
+                  ) : s.lastSpeedKmh != null ? (
+                    <p className="mt-1.5 text-xs text-slate-400">
+                      laatst bekend: {s.lastSpeedKmh} km/u
+                    </p>
+                  ) : null}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFollowId((p) => (p === s.id ? null : s.id));
+                    }}
+                    className={`mt-2 w-full rounded-lg px-2.5 py-2 text-xs font-semibold transition ${
+                      followId === s.id
+                        ? "bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-sm"
+                        : "border border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                     }`}
                   >
-                    {s.status}
-                  </span>
+                    {followId === s.id ? "◉ Volgt" : "○ Volgen"}
+                  </button>
                 </div>
-                {s.speedKmh != null && (
-                  <p className="mt-1 text-xs text-slate-400">
-                    {s.moving ? "▶" : "⏸"} {s.speedKmh} km/u
-                  </p>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setFollowId((p) => (p === s.id ? null : s.id));
-                  }}
-                  className={`mt-2 rounded-lg px-2 py-1 text-xs ${
-                    followId === s.id
-                      ? "bg-emerald-600 text-white"
-                      : "bg-slate-800 hover:bg-slate-700"
-                  }`}
-                >
-                  {followId === s.id ? "◉ Volgt" : "○ Volgen"}
-                </button>
               </li>
             ))}
+            {sources.length === 0 && (
+              <li className="rounded-xl border border-dashed border-slate-300 bg-white/60 p-6 text-center text-sm text-slate-400">
+                Geen voertuigen met positie.
+              </li>
+            )}
           </ul>
         </aside>
 
-        <section className="relative min-h-0">
+        {/* Kaart — gegarandeerde hoogte op mobiel, vult desktop */}
+        <section className="relative order-1 h-[55vh] min-h-[320px] lg:order-2 lg:h-auto lg:min-h-0">
           <TrackingMap
             vehicles={visible.vehicles ? mapVehicles : []}
             zones={visible.zones ? zones : []}
@@ -383,6 +413,7 @@ export default function LiveMapPage() {
             onSelect={(id) => void selectSource(id)}
             onMapClick={() => setFollowId(null)}
             onSaveSelection={onSaveSelection}
+            onSaveAsLocation={onSaveSelection}
             showLegend
           />
           <MapFilterControl

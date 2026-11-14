@@ -16,7 +16,7 @@ const personSchema = z.object({
 });
 
 export async function GET() {
-  const { auth, res } = await requireAuth();
+  const { res } = await requireAuth();
   if (res) return res;
 
   // Soft delete: verwijderde personen en gekoppelde verwijderde voertuigen tonen
@@ -46,7 +46,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { auth, res } = await requireAuth();
+  const { res } = await requireAuth();
   if (res) return res;
 
   const body = await req.json().catch(() => null);

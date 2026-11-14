@@ -6,7 +6,6 @@ import type {
   RuleCondition,
   IngestSource,
   Geofence,
-  Prisma,
 } from "@prisma/client";
 
 export type RuleWithConditions = Rule & {

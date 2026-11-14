@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAuth, requireAdmin } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
+import { deviceConnectionState, sourceTrackingState, liveSpeedKmh, lastKnownSpeedKmh } from "@/lib/tracking-state";
 import { z } from "zod";
 
 const vehicleUpdateSchema = z.object({
@@ -37,6 +38,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const vehicle = await prisma.ingestSource.findUnique({
     where: { id },
     include: {
+      devices: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: "desc" },
+      },
       persons: {
         where: { person: { deletedAt: null } },
         include: {
@@ -58,14 +63,36 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!vehicle || vehicle.deletedAt) {
     return NextResponse.json({ error: "Niet gevonden" }, { status: 404 });
   }
+  if (auth!.user.role !== "admin" && vehicle.ownerUserId !== auth!.user.id) {
+    return NextResponse.json({ error: "Geen toegang tot dit voertuig" }, { status: 403 });
+  }
 
   return NextResponse.json({
     ...vehicle,
-    speedKmh: vehicle.speedMps != null ? Math.round(vehicle.speedMps * 3.6 * 10) / 10 : null,
+    // SPEED-CONTRACT: speedKmh = alleen live snelheid (centrale tracking-state);
+    // lastSpeedKmh = laatst bekende waarde, expliciet als historisch.
+    speedKmh: liveSpeedKmh(sourceTrackingState(vehicle), vehicle.speedMps),
+    lastSpeedKmh: lastKnownSpeedKmh(vehicle.speedMps),
+    trackingState: sourceTrackingState(vehicle),
     sampledAt: vehicle.sampledAt?.toISOString() ?? null,
     receivedAt: vehicle.receivedAt.toISOString(),
     createdAt: vehicle.createdAt.toISOString(),
     updatedAt: vehicle.updatedAt.toISOString(),
+    devices: vehicle.devices.map((d) => {
+      const trackingState = deviceConnectionState(d.lastSeenAt, d.status);
+      return {
+        id: d.id,
+        imei: d.imei,
+        label: d.label,
+        brand: d.brand,
+        model: d.model,
+        status: d.status,
+        trackingState,
+        connectionState: trackingState === "unknown" ? "never_connected" : trackingState,
+        lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
+        lastFixAt: d.lastFixAt?.toISOString() ?? null,
+      };
+    }),
     persons: vehicle.persons.map((p) => ({
       id: p.person.id,
       name: p.person.name,
@@ -97,6 +124,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const existing = await prisma.ingestSource.findUnique({ where: { id } });
   if (!existing || existing.deletedAt) {
     return NextResponse.json({ error: "Niet gevonden" }, { status: 404 });
+  }
+  if (auth!.user.role !== "admin" && existing.ownerUserId !== auth!.user.id) {
+    return NextResponse.json({ error: "Geen toegang tot dit voertuig" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => null);

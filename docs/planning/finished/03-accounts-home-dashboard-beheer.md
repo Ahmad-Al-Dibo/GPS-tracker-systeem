@@ -1,6 +1,6 @@
 # Plan — Account-systeem, home, instructies en locatiebeheer
 
-**Status:** wacht op goedkeuring  
+**Status:** afgerond (2026-11-05) — accounts/dashboard/beheer operationeel  
 **Datum:** 2026-10-12  
 
 ## 1. Doel

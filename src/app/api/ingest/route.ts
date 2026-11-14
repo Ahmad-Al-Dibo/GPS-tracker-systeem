@@ -71,6 +71,16 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Multi-tenancy: een bron (naam) hoort bij één eigenaar. Een andere
+    // key-eigenaar mag een bestaande bron NIET overnemen (takeover-fix).
+    const existing = await prisma.ingestSource.findUnique({ where: { name: d.name } });
+    if (existing && existing.ownerUserId != null && existing.ownerUserId !== userId) {
+      return NextResponse.json(
+        { accepted: false, error: "Deze bronnaam is al in gebruik door een andere eigenaar" },
+        { status: 403 }
+      );
+    }
+
     const source = await prisma.ingestSource.upsert({
       where: { name: d.name },
       update: {
@@ -81,7 +91,7 @@ export async function POST(req: NextRequest) {
         sampledAt,
         receivedAt,
         eventId,
-        ownerUserId: userId,
+        // ownerUserId NIET overschrijven: eigenaarschap blijft stabiel
         lastError: null,
       },
       create: {

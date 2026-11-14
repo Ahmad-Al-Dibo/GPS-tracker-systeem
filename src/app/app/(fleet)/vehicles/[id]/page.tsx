@@ -34,6 +34,17 @@ type VehicleDetail = {
   sampledAt: string | null;
   receivedAt: string;
   persons: { id: string; name: string; email: string | null; phone: string | null }[];
+  devices: {
+    id: string;
+    imei: string;
+    label: string | null;
+    brand: string | null;
+    model: string | null;
+    status: string;
+    connectionState: string;
+    lastSeenAt: string | null;
+    lastFixAt: string | null;
+  }[];
   events: { id: string; ruleName: string; severity: string; status: string; startTime: string }[];
   tasks: { id: string; title: string; status: string; priority: string; assignee: string | null }[];
 };
@@ -51,11 +62,17 @@ export default function VehicleDetailPage() {
   const [form, setForm] = useState<Record<string, string | number | boolean | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [linkPersonId, setLinkPersonId] = useState("");
+  const [allDevices, setAllDevices] = useState<
+    { id: string; imei: string; label: string | null; status: string; vehicleId: string | null }[]
+  >([]);
+  const [linkDeviceId, setLinkDeviceId] = useState("");
+  const [deviceBusy, setDeviceBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [vRes, pRes] = await Promise.all([
+    const [vRes, pRes, dRes] = await Promise.all([
       fetch(`/api/vehicles/${id}`),
       fetch("/api/persons"),
+      fetch("/api/devices"),
     ]);
     if (vRes.ok) {
       const d = await vRes.json();
@@ -73,6 +90,12 @@ export default function VehicleDetailPage() {
     if (pRes.ok) {
       const d = await pRes.json();
       setPersons(d.persons.map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })));
+    }
+    if (dRes.ok) {
+      const d = await dRes.json();
+      setAllDevices(d.devices.map((x: { id: string; imei: string; label: string | null; status: string; vehicleId: string | null }) => ({
+        id: x.id, imei: x.imei, label: x.label, status: x.status, vehicleId: x.vehicleId,
+      })));
     }
   }, [id, router]);
 
@@ -116,6 +139,36 @@ export default function VehicleDetailPage() {
   async function unlinkPerson(personId: string) {
     await fetch(`/api/vehicle-persons?vehicleId=${id}&personId=${personId}`, { method: "DELETE" });
     void load();
+  }
+
+  async function linkDevice() {
+    if (!linkDeviceId) return;
+    setDeviceBusy(linkDeviceId);
+    try {
+      await fetch(`/api/devices/${linkDeviceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "assign", vehicleId: id }),
+      });
+      setLinkDeviceId("");
+      void load();
+    } finally {
+      setDeviceBusy(null);
+    }
+  }
+
+  async function unlinkDevice(deviceId: string) {
+    setDeviceBusy(deviceId);
+    try {
+      await fetch(`/api/devices/${deviceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "assign", vehicleId: null }),
+      });
+      void load();
+    } finally {
+      setDeviceBusy(null);
+    }
   }
 
   if (!vehicle) return <div className="p-6 text-slate-400">Laden…</div>;
@@ -286,6 +339,119 @@ export default function VehicleDetailPage() {
               </dd>
             </div>
           </dl>
+        </div>
+
+        {/* Gekoppelde hardware-apparaten (US-12) */}
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 bg-gradient-to-r from-blue-50 via-indigo-50/60 to-transparent px-5 py-4">
+            <h2 className="font-semibold text-slate-900">
+              Gekoppelde apparaten {vehicle.devices.length > 0 && (
+                <span className="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                  {vehicle.devices.length}
+                </span>
+              )}
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              GPS-hardware die aan dit voertuig is toegewezen. Koppel, vervang of ontkoppel apparaten hieronder.
+            </p>
+          </div>
+
+          <div className="p-5">
+            {vehicle.devices.length === 0 ? (
+              <p className="mb-4 text-sm text-slate-400">
+                Nog geen hardware-apparaten gekoppeld. Selecteer hieronder een geregistreerd apparaat, of voeg er
+                een toe via <a href="/app/devices" className="font-medium text-blue-600 hover:underline">Apparaten</a>.
+              </p>
+            ) : (
+              <ul className="mb-4 space-y-2">
+                {vehicle.devices.map((d) => (
+                  <li
+                    key={d.id}
+                    className="group flex flex-col gap-2.5 rounded-lg border border-slate-100 bg-gradient-to-r from-slate-50 to-white px-3.5 py-2.5 transition-shadow hover:shadow-md sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="relative flex h-2.5 w-2.5 flex-none">
+                        {d.connectionState === "online" && (
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                        )}
+                        <span
+                          className="relative inline-flex h-2.5 w-2.5 rounded-full"
+                          style={{
+                            backgroundColor:
+                              d.connectionState === "online" ? "#16a34a"
+                              : d.connectionState === "stale" ? "#d97706"
+                              : "#64748b",
+                          }}
+                        />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-800">{d.label ?? d.imei}</p>
+                        <p className="truncate font-mono text-xs text-slate-400">IMEI {d.imei}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 sm:justify-end">
+                      <div className="text-left sm:text-right">
+                        <p className="text-xs font-medium"
+                           style={{
+                             color:
+                               d.connectionState === "online" ? "#16a34a"
+                               : d.connectionState === "stale" ? "#d97706"
+                               : "#64748b",
+                           }}>
+                          {d.connectionState === "online" ? "Online"
+                            : d.connectionState === "stale" ? "Verbinding verouderd"
+                            : d.connectionState === "revoked" ? "Ingetrokken"
+                            : d.connectionState === "never_connected" ? "Nooit verbonden"
+                            : "Offline"}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {d.lastSeenAt ? `Laatst ${new Date(d.lastSeenAt).toLocaleString("nl-NL")}` : "Nog geen data"}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => void unlinkDevice(d.id)}
+                        disabled={deviceBusy === d.id}
+                        className="min-h-[38px] flex-none rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100"
+                      >
+                        {deviceBusy === d.id ? "..." : "Ontkoppelen"}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {/* Koppel een apparaat (US-06/US-12) */}
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-blue-200 bg-blue-50/40 px-3.5 py-3">
+              <span className="text-sm font-medium text-slate-700">Apparaat koppelen:</span>
+              <select
+                value={linkDeviceId}
+                onChange={(e) => setLinkDeviceId(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
+              >
+                <option value="">— Selecteer een geregistreerd apparaat —</option>
+                {allDevices
+                  .filter((d) => d.status !== "revoked" && d.vehicleId !== id)
+                  .map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.label ?? d.imei} (IMEI {d.imei})
+                      {d.vehicleId ? " — nu aan ander voertuig" : ""}
+                    </option>
+                  ))}
+              </select>
+              <button
+                onClick={() => void linkDevice()}
+                disabled={!linkDeviceId || deviceBusy === linkDeviceId}
+                className="rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:from-blue-700 hover:to-indigo-700 hover:shadow-md disabled:opacity-50"
+              >
+                {deviceBusy === linkDeviceId ? "Koppelen..." : "Koppelen"}
+              </button>
+              <span className="w-full text-xs text-slate-500">
+                Staat je apparaat er niet bij? Registreer het eerst bij{" "}
+                <a href="/app/devices" className="font-medium text-blue-600 hover:underline">Apparaten</a>.
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Gekoppelde personen */}

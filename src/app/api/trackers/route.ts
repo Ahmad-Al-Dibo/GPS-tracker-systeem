@@ -23,6 +23,8 @@ export async function GET() {
   const trackers = await prisma.ingestSource.findMany({
     where: {
       deletedAt: null,
+      // Multi-tenancy: admin alles, gebruiker alleen eigen trackers
+      ...(auth!.user.role === "admin" ? {} : { ownerUserId: auth!.user.id }),
       OR: [
         { trackerSerial: { not: null } },
         { trackerSource: "physical" },

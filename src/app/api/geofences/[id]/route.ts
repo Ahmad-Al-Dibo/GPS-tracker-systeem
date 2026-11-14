@@ -1,7 +1,7 @@
 // Geofences API: PATCH + DELETE
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireAuth, requireAdmin } from "@/lib/api-helpers";
+import { requireAdmin } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
 
 type Params = { params: Promise<{ id: string }> };

@@ -2,13 +2,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/api-helpers";
+import { sourceTrackingState, liveSpeedKmh } from "@/lib/tracking-state";
 
 export async function GET() {
   const { auth, res } = await requireAuth();
   if (res) return res;
 
   const now = Date.now();
-  const isOffline = (d: Date) => now - d.getTime() > 120_000;
 
   const where: Record<string, unknown> =
     auth.user.role === "admin" ? {} : { ownerUserId: auth.user.id };
@@ -41,11 +41,14 @@ export async function GET() {
     ]);
 
   const total = sources.length;
-  const online = sources.filter((s: { receivedAt: Date }) => !isOffline(s.receivedAt)).length;
+  // Centrale staat: "online" = vers; alles daarbuiten = offline voor de telling.
+  const isLive = (s: { latitude: number | null; receivedAt: Date; sampledAt: Date | null }) =>
+    sourceTrackingState(s) === "online";
+  const online = sources.filter(isLive).length;
   const offline = total - online;
   const moving = sources.filter(
-    (s: { speedMps: number | null; receivedAt: Date }) =>
-      s.speedMps != null && s.speedMps >= 1.0 && !isOffline(s.receivedAt)
+    (s: { latitude: number | null; receivedAt: Date; sampledAt: Date | null; speedMps: number | null }) =>
+      isLive(s) && liveSpeedKmh("online", s.speedMps) != null && (s.speedMps ?? 0) >= 1.0
   ).length;
   const stationary = online - moving;
 

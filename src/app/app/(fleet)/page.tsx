@@ -3,6 +3,7 @@
 // Dashboard — overzicht met stats, kaart (voertuigen + geofences + locaties)
 // en recente activiteit
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import MapFilterControl from "@/components/map-filters";
 import { useMapFilters, applyLocationFilters } from "@/lib/map-filters";
@@ -50,12 +51,6 @@ type Source = {
   persons: { id: string; name: string }[];
 };
 
-const sevColor: Record<string, string> = {
-  info: "bg-blue-50 text-blue-600",
-  warning: "bg-amber-50 text-amber-600",
-  critical: "bg-red-50 text-red-600",
-};
-
 const sevIcon: Record<string, string> = {
   info: "ℹ️",
   warning: "⚠️",
@@ -63,6 +58,7 @@ const sevIcon: Record<string, string> = {
 };
 
 export default function OverviewPage() {
+  const router = useRouter();
   const [data, setData] = useState<Overview | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -159,6 +155,19 @@ export default function OverviewPage() {
     [rawLocations, visible]
   );
 
+  /** Rechtermuisknop → navigeer naar Locaties-module met selectie. */
+  const onSaveAsLocation = useCallback(
+    (sel: { pos: [number, number]; label: string }) => {
+      const params = new URLSearchParams({
+        selLat: String(sel.pos[0]),
+        selLon: String(sel.pos[1]),
+        selLabel: sel.label,
+      });
+      router.push(`/app/locations?${params}`);
+    },
+    [router]
+  );
+
   const mapVehicles = sources
     .filter((s) => s.latitude != null && s.longitude != null)
     .map((s) => ({
@@ -190,14 +199,14 @@ export default function OverviewPage() {
       {/* Stats */}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:mb-6 lg:grid-cols-4 lg:gap-4">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div key={s.label} className="stat-card rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-3">
-              <span className={`flex h-10 w-10 items-center justify-center rounded-lg text-lg ${s.color}`}>
+              <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-lg ${s.color}`}>
                 {s.icon}
               </span>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{s.value ?? "—"}</p>
-                <p className="text-xs text-slate-500">{s.label}</p>
+              <div className="min-w-0">
+                <p className="text-2xl font-bold tracking-tight text-slate-900">{s.value ?? "—"}</p>
+                <p className="truncate text-xs font-medium text-slate-500">{s.label}</p>
               </div>
             </div>
           </div>
@@ -216,6 +225,7 @@ export default function OverviewPage() {
             onMapClick={() => setSelectedId(null)}
             showNames={true}
             showSpeed={true}
+            onSaveAsLocation={onSaveAsLocation}
             showLegend
           />
           <MapFilterControl

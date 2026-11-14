@@ -19,7 +19,7 @@ const personUpdateSchema = z.object({
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const { auth, res } = await requireAuth();
+  const { res } = await requireAuth();
   if (res) return res;
 
   const { id } = await params;
@@ -54,7 +54,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const { auth, res } = await requireAuth();
+  const { res } = await requireAuth();
   if (res) return res;
 
   const { id } = await params;

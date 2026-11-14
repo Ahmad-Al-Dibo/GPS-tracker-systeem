@@ -31,7 +31,11 @@ export async function GET() {
 
   // Soft delete: verwijderde voertuigen en gekoppelde verwijderde personen tonen
   const vehicles = await prisma.ingestSource.findMany({
-    where: { deletedAt: null },
+    where: {
+      deletedAt: null,
+      // Multi-tenancy: admin alles, gebruiker alleen eigen voertuigen
+      ...(auth!.user.role === "admin" ? {} : { ownerUserId: auth!.user.id }),
+    },
     include: {
       persons: {
         where: { person: { deletedAt: null } },

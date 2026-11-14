@@ -1,6 +1,6 @@
 # MVP Plan — Phone GPS Tracking Agent
 
-**Status:** verouderd — vervangen door `01-mvp-v2-heartbeat-sharing.md` (2026-10-10). Historisch.  
+**Status:** afgerond (2026-11-05) — MVP voltooid, zie huidige plannen — vervangen door `01-mvp-v2-heartbeat-sharing.md` (2026-10-10). Historisch.  
 **Datum:** 2026-10-09  
 **Doel:** Werkende MVP waarin een werknemer met een telefoon GPS-punten stuurt naar de backend en een admin dit live op een kaart ziet.
 

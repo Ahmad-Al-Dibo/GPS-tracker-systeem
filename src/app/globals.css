@@ -1,31 +1,31 @@
 @import "tailwindcss";
 
-/* GPS Manager — Light theme design tokens */
+/* GPS Manager — navy and blue dashboard theme */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #edf2fb;
+  --foreground: #17243d;
   --card: #ffffff;
-  --card-border: #e2e8f0;
-  --muted: #64748b;
-  --muted-light: #94a3b8;
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --primary-light: #eff6ff;
+  --card-border: #dce5f3;
+  --muted: #60708f;
+  --muted-light: #8c9ab4;
+  --primary: #2377f5;
+  --primary-hover: #1765db;
+  --primary-light: #e9f1ff;
   --success: #16a34a;
   --success-light: #f0fdf4;
   --warning: #d97706;
   --warning-light: #fffbeb;
   --danger: #dc2626;
   --danger-light: #fef2f2;
-  --sidebar-bg: #0f172a;
-  --sidebar-text: #94a3b8;
+  --sidebar-bg: #101c32;
+  --sidebar-text: #a7b3ca;
   --sidebar-active: #ffffff;
-  --sidebar-active-bg: rgba(59, 130, 246, 0.2);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
-  --radius: 10px;
-  --radius-lg: 14px;
+  --sidebar-active-bg: #287cf3;
+  --shadow-sm: 0 2px 6px rgba(35, 57, 98, 0.06);
+  --shadow-md: 0 6px 18px rgba(35, 57, 98, 0.09);
+  --shadow-lg: 0 12px 30px rgba(20, 39, 77, 0.14);
+  --radius: 12px;
+  --radius-lg: 16px;
 }
 
 @theme inline {
@@ -48,6 +48,316 @@ body {
   overflow-x: hidden;
   font-size: 14px;
   line-height: 1.5;
+}
+
+/* Shared application frame */
+.app-loading {
+  background:
+    radial-gradient(ellipse at 12% 8%, #fff 0%, transparent 48%),
+    linear-gradient(135deg, #f8faff 0%, #e8eef9 100%);
+}
+
+.app-sidebar {
+  background:
+    radial-gradient(ellipse at 8% 100%, rgba(35, 119, 245, 0.15), transparent 38%),
+    linear-gradient(180deg, #101c32 0%, #14223c 100%);
+  color: #f8fbff;
+  box-shadow: 5px 0 22px rgba(14, 28, 54, 0.12);
+}
+
+.app-brand {
+  min-height: 82px;
+  border-bottom: 1px solid rgba(201, 218, 249, 0.1);
+}
+
+.app-brand-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #2782ff;
+  filter: drop-shadow(0 3px 8px rgba(31, 121, 255, 0.35));
+}
+
+.app-brand-mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+.app-brand-mark-small {
+  width: 30px;
+  height: 30px;
+}
+
+.app-navigation {
+  scrollbar-color: rgba(164, 183, 217, 0.32) transparent;
+  scrollbar-width: thin;
+}
+
+.app-nav-link {
+  min-height: 38px;
+  color: #a9b5cc;
+  text-decoration: none;
+}
+
+.app-nav-link:hover {
+  color: #f7faff;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.app-nav-link.is-active,
+.app-nav-link.is-active:hover {
+  color: #fff;
+  background: linear-gradient(100deg, #328aff, #2071ed);
+  box-shadow: 0 5px 14px rgba(25, 106, 235, 0.35);
+}
+
+.app-nav-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.09);
+  text-align: center;
+  opacity: 0.92;
+}
+
+.app-nav-link.is-active .app-nav-icon {
+  background: rgba(255, 255, 255, 0.22);
+  opacity: 1;
+}
+
+.app-user {
+  border-color: rgba(201, 218, 249, 0.12);
+}
+
+.app-avatar {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #375984, #203653);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.app-avatar-top {
+  width: 34px;
+  height: 34px;
+  color: #fff;
+}
+
+.app-logout {
+  color: #a9b5cc;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.app-logout:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.app-main {
+  background: #edf2fb;
+}
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  min-height: 64px;
+  border-bottom: 1px solid rgba(213, 223, 240, 0.75);
+  background: rgba(249, 251, 255, 0.9);
+  backdrop-filter: blur(14px);
+}
+
+.app-content {
+  background:
+    radial-gradient(ellipse at 78% 8%, rgba(255, 255, 255, 0.92), transparent 48%),
+    radial-gradient(ellipse at 12% 96%, rgba(183, 204, 245, 0.24), transparent 42%),
+    linear-gradient(135deg, #f4f7fd 0%, #e9effa 100%);
+}
+
+.app-content > * {
+  position: relative;
+}
+
+.app-content h1 {
+  color: #17243d;
+  letter-spacing: -0.025em;
+}
+
+.app-content .rounded-xl.border {
+  border-color: rgba(216, 226, 243, 0.95);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.app-content .rounded-xl.border.bg-white,
+.app-content .rounded-lg.border.bg-white {
+  background-color: rgba(255, 255, 255, 0.94);
+}
+
+.app-content table {
+  color: #233451;
+}
+
+.app-content thead {
+  color: #627493;
+}
+
+.app-content input:not([type="checkbox"]):not([type="radio"]),
+.app-content select,
+.app-content textarea {
+  border-color: #d7e0ef;
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.94);
+  color: #17243d;
+}
+
+.app-content input:not([type="checkbox"]):not([type="radio"]):focus,
+.app-content select:focus,
+.app-content textarea:focus {
+  border-color: #71a8ff;
+  outline: 3px solid rgba(43, 126, 245, 0.13);
+}
+
+.app-content button[class*="bg-blue-600"],
+.app-content button[class*="bg-emerald-600"] {
+  color: white;
+  box-shadow: 0 4px 12px rgba(26, 82, 165, 0.16);
+  transition: background-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.app-content button[class*="bg-blue-600"]:hover,
+.app-content button[class*="bg-emerald-600"]:hover {
+  box-shadow: 0 6px 16px rgba(26, 82, 165, 0.22);
+  transform: translateY(-1px);
+}
+
+.app-mobile-header {
+  border-bottom: 1px solid rgba(213, 223, 240, 0.85);
+  background: rgba(248, 250, 255, 0.96);
+  color: #17243d;
+  backdrop-filter: blur(12px);
+}
+
+.app-menu-toggle,
+.app-bottom-nav {
+  border-color: #dce5f3;
+  background: rgba(255, 255, 255, 0.97);
+}
+
+.app-mobile-menu {
+  background: #101c32;
+  box-shadow: 0 16px 38px rgba(9, 20, 42, 0.3);
+}
+
+.app-bottom-nav {
+  border-top: 1px solid #dce5f3;
+  box-shadow: 0 -5px 18px rgba(35, 57, 98, 0.06);
+}
+
+.app-bottom-link {
+  color: #8391aa;
+  text-decoration: none;
+}
+
+.app-bottom-link.text-blue-600 {
+  color: #2377f5;
+}
+
+.login-shell {
+  background:
+    radial-gradient(ellipse at 12% 10%, rgba(255, 255, 255, 0.96), transparent 44%),
+    radial-gradient(ellipse at 90% 92%, rgba(150, 184, 245, 0.28), transparent 46%),
+    linear-gradient(135deg, #f3f6fd, #e6edf9);
+}
+
+.home-brand-mark {
+    background: linear-gradient(145deg, #318bff, #1261df);
+    box-shadow: 0 5px 14px rgba(35, 119, 245, 0.22);
+}
+
+.home-brand-mark svg {
+    width: 32px;
+    height: 32px;
+}
+
+.login-logo {
+  background: linear-gradient(145deg, #318bff, #1261df);
+  box-shadow: 0 10px 24px rgba(35, 119, 245, 0.3);
+}
+
+.login-logo svg {
+  width: 35px;
+  height: 35px;
+}
+
+.login-card {
+  border-color: #dce5f3;
+  border-radius: 18px;
+  box-shadow: 0 18px 48px rgba(27, 49, 91, 0.11);
+}
+
+.login-submit {
+  background: linear-gradient(100deg, #17243d, #223b63);
+  transition: background 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+}
+
+.login-submit:hover {
+  background: linear-gradient(100deg, #2377f5, #1765db);
+  box-shadow: 0 6px 16px rgba(35, 119, 245, 0.23);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 1023px) {
+  .app-content {
+    padding-top: 56px;
+  }
+
+  /* Scroll-container: voldoende ondermarge zodat content niet
+     achter de fixed bottom-nav (~56px) verdwijnt */
+  .app-main {
+    padding-bottom: 72px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-content .h-full {
+    min-height: calc(100vh - 160px);
+  }
+}
+
+/* Stat-kaarten: subtiele diepte + hover */
+.stat-card {
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Tabel-rijen: hover + overgang */
+.app-content tbody tr {
+  transition: background-color 120ms ease;
+}
+.app-content tbody tr:hover {
+  background-color: rgba(35, 119, 245, 0.04);
+}
+
+/* Kaart-overlay knoppen: betere zichtbaarheid */
+.tracking-map .leaflet-control-zoom a {
+  border-radius: 6px !important;
+  margin: 2px !important;
+  border-color: #dce5f3 !important;
+  color: #17243d !important;
 }
 
 /* Focus visible voor toetsenbord */
@@ -139,8 +449,8 @@ body {
   z-index: 3 !important;
 }
 .tracking-map .leaflet-right .leaflet-control-zoom {
-  margin-top: 96px;
-  margin-right: 56px;
+  margin-top: 108px;
+  margin-right: 12px;
 }
 .leaflet-popup-pane,
 .leaflet-tooltip-pane {

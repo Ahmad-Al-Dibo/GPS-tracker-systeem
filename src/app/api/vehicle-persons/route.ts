@@ -28,6 +28,9 @@ export async function POST(req: NextRequest) {
     prisma.person.findUnique({ where: { id: personId } }),
   ]);
   if (!vehicle) return NextResponse.json({ error: "Voertuig niet gevonden" }, { status: 404 });
+  if (auth!.user.role !== "admin" && vehicle.ownerUserId !== auth!.user.id) {
+    return NextResponse.json({ error: "Geen toegang tot dit voertuig" }, { status: 403 });
+  }
   if (!person) return NextResponse.json({ error: "Persoon niet gevonden" }, { status: 404 });
   if (vehicle.deletedAt) {
     return NextResponse.json({ error: "Voertuig staat in de prullenbak" }, { status: 409 });
@@ -62,6 +65,15 @@ export async function DELETE(req: NextRequest) {
 
   if (!vehicleId || !personId) {
     return NextResponse.json({ error: "vehicleId en personId verplicht" }, { status: 400 });
+  }
+
+  // Multi-tenancy: alleen de eigenaar (of admin) mag een koppeling verbreken
+  const vehicle = await prisma.ingestSource.findUnique({ where: { id: vehicleId } });
+  if (!vehicle) {
+    return NextResponse.json({ error: "Voertuig niet gevonden" }, { status: 404 });
+  }
+  if (auth!.user.role !== "admin" && vehicle.ownerUserId !== auth!.user.id) {
+    return NextResponse.json({ error: "Geen toegang tot dit voertuig" }, { status: 403 });
   }
 
   await prisma.vehiclePerson.deleteMany({

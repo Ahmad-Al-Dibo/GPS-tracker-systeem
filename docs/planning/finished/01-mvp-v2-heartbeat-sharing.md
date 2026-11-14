@@ -1,6 +1,6 @@
 # MVP Plan v2 — Heartbeat + gedeelde statussen
 
-**Status:** gedeeltelijk ingehaald — heartbeat/status blijven; uitgebouwd door `02-mvp-v3-officieel-ontwerp.md` (2026-10-11). Bron: officiële ontwerpdoc.  
+**Status:** afgerond (2026-11-05) — heartbeat/status ingebouwd — heartbeat/status blijven; uitgebouwd door `02-mvp-v3-officieel-ontwerp.md` (2026-10-11). Bron: officiële ontwerpdoc.  
 **Datum:** 2026-10-10  
 **Aanleiding:** vereenvoudigd statusmodel (sharing/online/offline/logged_out), heartbeat-aanwezigheid, alleen laatste locatie per werknemer in MVP.
 

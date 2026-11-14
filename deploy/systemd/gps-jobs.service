@@ -1,0 +1,30 @@
+[Unit]
+Description=GPS Tracking Platform - Background worker (deadline-check + retention)
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=gps
+Group=gps
+WorkingDirectory=/opt/gps-tracking-system
+EnvironmentFile=/etc/gps-tracking/gps-web.env
+ExecStart=/opt/gps-tracking-system/node_modules/.bin/tsx scripts/jobs.ts
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gps-jobs
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/gps-tracking-system/.next
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

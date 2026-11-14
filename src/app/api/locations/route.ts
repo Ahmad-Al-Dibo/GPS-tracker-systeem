@@ -40,7 +40,7 @@ function activeLocationWhere(now: Date): Prisma.ManagedLocationWhereInput {
 }
 
 export async function GET(req: NextRequest) {
-  const { auth, res } = await requireAuth();
+  const { res } = await requireAuth();
   if (res) return res;
 
   const url = new URL(req.url);
