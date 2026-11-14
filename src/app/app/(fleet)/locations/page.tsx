@@ -2,7 +2,7 @@
 
 // Locaties & Routes — beheermodule voor beheerde locaties, routes en import
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import MapFilterControl from "@/components/map-filters";
 import {
@@ -10,6 +10,7 @@ import {
   applyLocationFilters,
   type AvailableLayers,
 } from "@/lib/map-filters";
+import { parseGeofences } from "@/lib/map-data";
 import type {
   MapZone,
   MapLocation,
@@ -94,13 +95,17 @@ const EMPTY_FORM = {
   notes: "",
 };
 
-export default function LocationsPage() {
+// useSearchParams vereist een Suspense-boundary voor prerender (Next.js);
+// zonder deze wrapper faalt de productiebuild met een CSR-bailout-waarschuwing.
+function LocationsPageContent() {
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<"locaties" | "routes" | "import">("locaties");
 
   // ── Kaartfilters (pagina-scoped) ──
+  // vehicles: false — deze pagina laadt geen voertuigposities; een toggle
+  // zou een dood knopje zijn (de vorige versie had die wél aangeboden).
   const available: AvailableLayers = {
-    vehicles: true,
+    vehicles: false,
     zones: true,
     locationsPermanent: true,
     locationsTemporary: true,
@@ -119,6 +124,12 @@ export default function LocationsPage() {
   >("active");
   const [typeFilter, setTypeFilter] = useState<"" | "permanent" | "temporary">("");
   const [search, setSearch] = useState("");
+  // Debounce: zonder dit werd er per toetsaanslag een nieuwe API-call gemaakt.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
   const [zones, setZones] = useState<MapZone[]>([]);
   const [routes, setRoutes] = useState<RouteRow[]>([]);
 
@@ -171,13 +182,13 @@ export default function LocationsPage() {
   const loadLocations = useCallback(async () => {
     const params = new URLSearchParams({ status: statusFilter });
     if (typeFilter) params.set("type", typeFilter);
-    if (search.trim()) params.set("q", search.trim());
+    if (debouncedSearch.trim()) params.set("q", debouncedSearch.trim());
     const res = await fetch(`/api/locations?${params}`);
     if (res.ok) {
       const d = await res.json();
       setLocations(d.locations);
     }
-  }, [statusFilter, typeFilter, search]);
+  }, [statusFilter, typeFilter, debouncedSearch]);
 
   const loadAll = useCallback(async () => {
     const [zRes, rRes] = await Promise.all([
@@ -186,26 +197,9 @@ export default function LocationsPage() {
     ]);
     if (zRes.ok) {
       const d = await zRes.json();
-      setZones(
-        d.geofences
-          .filter((z: { isActive: boolean }) => z.isActive)
-          .map(
-            (z: {
-              id: string;
-              name: string;
-              description: string | null;
-              color: string;
-              coordinates: string;
-            }) => ({
-              id: z.id,
-              name: z.name,
-              description: z.description,
-              color: z.color,
-              coordinates: JSON.parse(z.coordinates) as [number, number][],
-            })
-          )
-          .filter((z: MapZone) => Array.isArray(z.coordinates) && z.coordinates.length >= 3)
-      );
+      // Gedeelde parser: veilige per-row JSON.parse (corrupte rijen worden
+      // overgeslagen in plaats van de hele load te laten falen).
+      setZones(parseGeofences(d.geofences));
     }
     if (rRes.ok) {
       const d = await rRes.json();
@@ -286,17 +280,22 @@ export default function LocationsPage() {
     setShowForm(true);
   }
 
+  // Sequence-guard: een tragere oudere geocode-response mag de resultaten
+  // van een nieuwere zoekopdracht niet overschrijven.
+  const geoSeqRef = useRef(0);
   async function searchAddress(qOverride?: string) {
     const q = (qOverride ?? geoQuery).trim();
     if (q.length < 3) {
       setGeoError("Voer minimaal 3 tekens in");
       return;
     }
+    const seq = ++geoSeqRef.current;
     setGeoBusy(true);
     setGeoError(null);
     try {
       const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
       const d = await res.json().catch(() => null);
+      if (seq !== geoSeqRef.current) return;
       if (!res.ok) {
         setGeoError(d?.error ?? `Fout ${res.status}`);
         setGeoResults([]);
@@ -307,9 +306,9 @@ export default function LocationsPage() {
         setGeoError("Geen resultaten — probeer een vollediger adres (straat + huisnummer + plaats).");
       }
     } catch {
-      setGeoError("Netwerkfout bij geocoding");
+      if (seq === geoSeqRef.current) setGeoError("Netwerkfout bij geocoding");
     } finally {
-      setGeoBusy(false);
+      if (seq === geoSeqRef.current) setGeoBusy(false);
     }
   }
 
@@ -376,12 +375,24 @@ export default function LocationsPage() {
 
   async function deleteLocation(id: string) {
     if (!confirm("Locatie naar prullenbak van deze module verplaatsen?")) return;
-    await fetch(`/api/locations/${id}`, { method: "DELETE" });
+    setError(null);
+    const res = await fetch(`/api/locations/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => null);
+      setError(d?.error ?? `Verwijderen mislukt (${res.status})`);
+      return;
+    }
     void loadLocations();
   }
 
   async function restoreLocation(id: string) {
-    await fetch(`/api/locations/${id}/restore`, { method: "POST" });
+    setError(null);
+    const res = await fetch(`/api/locations/${id}/restore`, { method: "POST" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => null);
+      setError(d?.error ?? `Herstellen mislukt (${res.status})`);
+      return;
+    }
     void loadLocations();
   }
 
@@ -827,7 +838,7 @@ Tijdelijke locatie,"Stationsstraat 12, Enschede",temporary,2026-12-25T18:00:00,"
         <TrackingMap
           vehicles={[]}
           zones={visible.zones ? zones : []}
-          locations={visible.vehicles ? activeLocationsForMap : activeLocationsForMap}
+          locations={activeLocationsForMap}
           routeLine={visible.route ? routeVisualization : null}
           onSaveSelection={onSaveSelection}
           onSaveAsLocation={onSaveSelection}
@@ -1484,5 +1495,13 @@ Tijdelijke locatie,"Stationsstraat 12, Enschede",temporary,2026-12-25T18:00:00,"
         </div>
       )}
     </div>
+  );
+}
+
+export default function LocationsPage() {
+  return (
+    <Suspense>
+      <LocationsPageContent />
+    </Suspense>
   );
 }

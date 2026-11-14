@@ -6,7 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import MapFilterControl from "@/components/map-filters";
 import { useMapFilters, applyLocationFilters } from "@/lib/map-filters";
-import type { MapZone, MapLocation, SelectionMarker } from "@/components/tracking-map";
+import { toMapVehicles } from "@/lib/map-data";
+import { useIngestSources, useMapLayers } from "@/lib/use-map-data";
+import type { SelectionMarker } from "@/components/tracking-map";
 
 const TrackingMap = dynamic(() => import("@/components/tracking-map"), {
   ssr: false,
@@ -17,30 +19,15 @@ const TrackingMap = dynamic(() => import("@/components/tracking-map"), {
   ),
 });
 
-type Source = {
-  id: string;
-  name: string;
-  displayName: string;
-  iconEmoji: string;
-  latitude: number | null;
-  longitude: number | null;
-  speedKmh: number | null;
-  lastSpeedKmh: number | null;
-  trackingState: string;
-  moving: boolean;
-  status: string;
-  sampledAt: string | null;
-  receivedAt: string;
-};
-
 export default function LiveMapPage() {
   const router = useRouter();
-  const [sources, setSources] = useState<Source[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [followId, setFollowId] = useState<string | null>(null);
   const [trail, setTrail] = useState<[number, number][] | null>(null);
-  const [zones, setZones] = useState<MapZone[]>([]);
-  const [rawLocations, setRawLocations] = useState<MapLocation[]>([]);
+
+  // Gedeelde polling-hooks (voertuigen 5s, lagen 30s — zelfde cadans als voorheen)
+  const { sources, error: sourcesError } = useIngestSources(5000);
+  const { zones, locations: layerLocations, error: layersError } = useMapLayers(30_000);
 
   // Kaartfilters (pagina-scoped; standaard geen verlopen locaties)
   const { state: filterState, visible, toggle } = useMapFilters(
@@ -55,17 +42,22 @@ export default function LiveMapPage() {
   );
 
   // ── Browser-locatie delen ──
-  const [username, setUsername] = useState("gebruiker");
+  // username via ref i.p.v. state: de watch-callback moet de actuele waarde
+  // zien, ook als /api/me ná het starten van delen resolve't.
+  const usernameRef = useRef("gebruiker");
   const [sharing, setSharing] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
   const watchIdRef = useRef<number | null>(null);
+  // Beschermt tegen dubbel-klikken vóórdat watchPosition actief is (de
+  // vorige check op watchIdRef kwam pas ná een await — twee starts).
+  const shareStartingRef = useRef(false);
   const shareKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     void fetch("/api/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d?.username) setUsername(d.username);
+        if (d?.username) usernameRef.current = d.username;
       })
       .catch(() => undefined);
   }, []);
@@ -99,20 +91,25 @@ export default function LiveMapPage() {
       setShareStatus("Browser ondersteunt locatie niet");
       return;
     }
+    if (shareStartingRef.current || watchIdRef.current != null) return;
+    shareStartingRef.current = true;
     let key: string;
     try {
       key = await ensureShareKey();
     } catch (err) {
       setShareStatus(err instanceof Error ? err.message : "Key aanmaken mislukt");
+      shareStartingRef.current = false;
       return;
     }
     setSharing(true);
     setShareStatus("Wachten op GPS…");
 
+    // username via ref: de watch-callback blijft anders hangen op de
+    // "gebruiker"-fallback als /api/me later resolve't.
     watchIdRef.current = navigator.geolocation.watchPosition(
       async (p) => {
         const body = JSON.stringify({
-          name: `browser-${username}`,
+          name: `browser-${usernameRef.current}`,
           latitude: p.coords.latitude,
           longitude: p.coords.longitude,
           accuracyMeters: p.coords.accuracy ?? null,
@@ -139,7 +136,8 @@ export default function LiveMapPage() {
       },
       { enableHighAccuracy: true, maximumAge: 5_000, timeout: 15_000 }
     );
-  }, [ensureShareKey, username]);
+    shareStartingRef.current = false;
+  }, [ensureShareKey]);
 
   const stopShare = useCallback(() => {
     if (watchIdRef.current != null) {
@@ -159,88 +157,9 @@ export default function LiveMapPage() {
     };
   }, []);
 
-  const load = useCallback(async () => {
-    const res = await fetch("/api/ingest/sources", { cache: "no-store" });
-    if (res.ok) {
-      const d = await res.json();
-      setSources(d.sources);
-    }
-  }, []);
-
-  const loadLayers = useCallback(async () => {
-    const [zRes, locRes] = await Promise.all([
-      fetch("/api/geofences"),
-      fetch("/api/locations?status=active"),
-    ]);
-    if (zRes.ok) {
-      const d = await zRes.json();
-      setZones(
-        d.geofences
-          .filter((z: { isActive: boolean }) => z.isActive)
-          .map(
-            (z: {
-              id: string;
-              name: string;
-              description: string | null;
-              color: string;
-              coordinates: string;
-            }) => ({
-              id: z.id,
-              name: z.name,
-              description: z.description,
-              color: z.color,
-              coordinates: JSON.parse(z.coordinates) as [number, number][],
-            })
-          )
-          .filter((z: MapZone) => Array.isArray(z.coordinates) && z.coordinates.length >= 3)
-      );
-    }
-    if (locRes.ok) {
-      const d = await locRes.json();
-      setRawLocations(
-        d.locations.map(
-          (l: {
-            id: string;
-            name: string;
-            address: string;
-            latitude: number;
-            longitude: number;
-            type: "permanent" | "temporary";
-            color: string | null;
-            isExpired: boolean;
-            expiresAt: string | null;
-            notes: string | null;
-          }) => ({
-            id: l.id,
-            name: l.name,
-            address: l.address,
-            latitude: l.latitude,
-            longitude: l.longitude,
-            type: l.type,
-            color: l.color,
-            isExpired: l.isExpired,
-            expiresAt: l.expiresAt,
-            notes: l.notes,
-          })
-        )
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-    void loadLayers();
-    const t = setInterval(() => void load(), 5000);
-    const t2 = setInterval(() => void loadLayers(), 30_000);
-    return () => {
-      clearInterval(t);
-      clearInterval(t2);
-    };
-  }, [load, loadLayers]);
-
   const visibleLocations = useMemo(
-    () => applyLocationFilters(rawLocations, visible),
-    [rawLocations, visible]
+    () => applyLocationFilters(layerLocations, visible),
+    [layerLocations, visible]
   );
 
   /** Kaartselectie opslaan → open Locaties-module met vooraf ingevulde selectie. */
@@ -256,44 +175,42 @@ export default function LiveMapPage() {
     [router]
   );
 
+  // Sequence-guard: een trage trail-request van een vorig voertuig mag de
+  // trail van de huidige selectie niet overschrijven (of bij fout blijven
+  // staan als verkeerde lijn onder een nieuwe selectie).
+  const trailSeqRef = useRef(0);
   const selectSource = useCallback(
     async (id: string) => {
       setSelectedId(id);
+      const seq = ++trailSeqRef.current;
       const src = sources.find((s) => s.id === id);
       if (!src) return;
       try {
         const res = await fetch(
           `/api/ingest/sources/${encodeURIComponent(src.name)}?limit=200`
         );
-        if (res.ok) {
-          const d = await res.json();
-          setTrail(
-            d.trail.map((p: { latitude: number; longitude: number }) => [
-              p.latitude,
-              p.longitude,
-            ])
-          );
+        if (seq !== trailSeqRef.current) return;
+        if (!res.ok) {
+          setTrail(null);
+          return;
         }
+        const d = await res.json();
+        if (seq !== trailSeqRef.current) return;
+        setTrail(
+          d.trail.map((p: { latitude: number; longitude: number }) => [
+            p.latitude,
+            p.longitude,
+          ])
+        );
       } catch {
-        setTrail(null);
+        if (seq === trailSeqRef.current) setTrail(null);
       }
     },
     [sources]
   );
 
-  const mapVehicles = sources
-    .filter((s) => s.latitude != null && s.longitude != null)
-    .map((s) => ({
-      id: s.id,
-      name: s.displayName,
-      iconEmoji: s.iconEmoji,
-      latitude: s.latitude!,
-      longitude: s.longitude!,
-      speedKmh: s.speedKmh,
-      moving: s.moving,
-      status: s.status,
-      observedAt: s.sampledAt ?? s.receivedAt,
-    }));
+  const mapVehicles = useMemo(() => toMapVehicles(sources), [sources]);
+  const error = sourcesError ?? layersError;
 
   return (
     <div className="flex h-full flex-col">
@@ -304,6 +221,11 @@ export default function LiveMapPage() {
           <p className="text-xs text-blue-100 sm:text-sm">
             {sources.length} voertuigen · {sources.filter((s) => s.moving).length} bewegend
           </p>
+          {error && (
+            <p className="mt-1 rounded bg-white/20 px-2 py-0.5 text-xs text-white">
+              {error} — bijgewerkt op laatste succesvolle load.
+            </p>
+          )}
         </div>
         <div className="flex flex-row flex-wrap items-center gap-2">
           <button

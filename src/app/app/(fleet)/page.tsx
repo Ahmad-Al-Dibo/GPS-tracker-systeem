@@ -7,7 +7,8 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import MapFilterControl from "@/components/map-filters";
 import { useMapFilters, applyLocationFilters } from "@/lib/map-filters";
-import type { MapZone, MapLocation } from "@/components/tracking-map";
+import { toMapVehicles } from "@/lib/map-data";
+import { useVehicleList, useMapLayers } from "@/lib/use-map-data";
 
 const TrackingMap = dynamic(() => import("@/components/tracking-map"), {
   ssr: false,
@@ -34,23 +35,6 @@ type Overview = {
   }[];
 };
 
-type Source = {
-  id: string;
-  name: string;
-  displayName: string;
-  iconEmoji: string;
-  licensePlate: string | null;
-  brand: string | null;
-  vehicleType: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  speedKmh: number | null;
-  moving: boolean;
-  status: string;
-  sampledAt: string | null;
-  persons: { id: string; name: string }[];
-};
-
 const sevIcon: Record<string, string> = {
   info: "ℹ️",
   warning: "⚠️",
@@ -60,10 +44,13 @@ const sevIcon: Record<string, string> = {
 export default function OverviewPage() {
   const router = useRouter();
   const [data, setData] = useState<Overview | null>(null);
-  const [sources, setSources] = useState<Source[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [zones, setZones] = useState<MapZone[]>([]);
-  const [rawLocations, setRawLocations] = useState<MapLocation[]>([]);
+
+  // Voertuigen (10s) + kaartlagen (10s) via gedeelde hooks; overview haalt
+  // de pagina zelf op (dashboard-specifieke statistieken).
+  const { vehicles, error: vehiclesError } = useVehicleList(10_000);
+  const { zones, locations: layerLocations, error: layersError } = useMapLayers(10_000);
 
   // Kaartfilters: dashboard toont voertuigen + geofences + actieve locaties
   const { state: filterState, visible, toggle } = useMapFilters(
@@ -77,83 +64,29 @@ export default function OverviewPage() {
     }
   );
 
-  const load = useCallback(async () => {
-    const [ovRes, srcRes, zRes, locRes] = await Promise.all([
-      fetch("/api/overview"),
-      fetch("/api/vehicles"),
-      fetch("/api/geofences"),
-      fetch("/api/locations?status=active"),
-    ]);
-    if (ovRes.ok) setData(await ovRes.json());
-    if (srcRes.ok) {
-      const d = await srcRes.json();
-      setSources(d.vehicles);
-    }
-    if (zRes.ok) {
-      const d = await zRes.json();
-      setZones(
-        d.geofences
-          .filter((z: { isActive: boolean }) => z.isActive)
-          .map(
-            (z: {
-              id: string;
-              name: string;
-              description: string | null;
-              color: string;
-              coordinates: string;
-            }) => ({
-              id: z.id,
-              name: z.name,
-              description: z.description,
-              color: z.color,
-              coordinates: JSON.parse(z.coordinates) as [number, number][],
-            })
-          )
-          .filter((z: MapZone) => Array.isArray(z.coordinates) && z.coordinates.length >= 3)
-      );
-    }
-    if (locRes.ok) {
-      const d = await locRes.json();
-      setRawLocations(
-        d.locations.map(
-          (l: {
-            id: string;
-            name: string;
-            address: string;
-            latitude: number;
-            longitude: number;
-            type: "permanent" | "temporary";
-            color: string | null;
-            isExpired: boolean;
-            expiresAt: string | null;
-            notes: string | null;
-          }) => ({
-            id: l.id,
-            name: l.name,
-            address: l.address,
-            latitude: l.latitude,
-            longitude: l.longitude,
-            type: l.type,
-            color: l.color,
-            isExpired: l.isExpired,
-            expiresAt: l.expiresAt,
-            notes: l.notes,
-          })
-        )
-      );
+  const loadOverview = useCallback(async () => {
+    try {
+      const res = await fetch("/api/overview", { cache: "no-store" });
+      if (!res.ok) throw new Error(`Fout ${res.status}`);
+      setData(await res.json());
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Netwerkfout");
     }
   }, []);
 
   useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), 10_000);
+    void loadOverview();
+    const t = setInterval(() => void loadOverview(), 10_000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [loadOverview]);
 
   const visibleLocations = useMemo(
-    () => applyLocationFilters(rawLocations, visible),
-    [rawLocations, visible]
+    () => applyLocationFilters(layerLocations, visible),
+    [layerLocations, visible]
   );
+
+  const mapVehicles = useMemo(() => toMapVehicles(vehicles), [vehicles]);
 
   /** Rechtermuisknop → navigeer naar Locaties-module met selectie. */
   const onSaveAsLocation = useCallback(
@@ -168,19 +101,7 @@ export default function OverviewPage() {
     [router]
   );
 
-  const mapVehicles = sources
-    .filter((s) => s.latitude != null && s.longitude != null)
-    .map((s) => ({
-      id: s.id,
-      name: s.displayName,
-      iconEmoji: s.iconEmoji,
-      latitude: s.latitude!,
-      longitude: s.longitude!,
-      speedKmh: s.speedKmh,
-      moving: s.moving,
-      status: s.status,
-      observedAt: s.sampledAt ?? new Date().toISOString(),
-    }));
+  const error = loadError ?? vehiclesError ?? layersError;
 
   const stats = [
     { label: "Voertuigen", value: data?.totalVehicles, icon: "🚗", color: "bg-blue-50 text-blue-600" },
@@ -195,6 +116,12 @@ export default function OverviewPage() {
         <h1 className="text-xl font-bold lg:text-2xl">Dashboard</h1>
         <p className="text-sm text-slate-500">Live voertuiglocaties</p>
       </div>
+
+      {error && (
+        <p className="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">
+          {error} — getoonde gegevens zijn mogelijk verouderd.
+        </p>
+      )}
 
       {/* Stats */}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:mb-6 lg:grid-cols-4 lg:gap-4">
@@ -245,7 +172,7 @@ export default function OverviewPage() {
         <div className="flex flex-col gap-4">
           {/* Snelle info geselecteerd voertuig */}
           {selectedId && (() => {
-            const v = sources.find((s) => s.id === selectedId);
+            const v = vehicles.find((s) => s.id === selectedId);
             if (!v) return null;
             return (
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -267,7 +194,7 @@ export default function OverviewPage() {
                       {v.moving ? "▶" : "⏸"} {v.speedKmh} km/u
                     </p>
                   )}
-                  {v.persons.length > 0 && (
+                  {v.persons && v.persons.length > 0 && (
                     <p>👤 {v.persons.map((p) => p.name).join(", ")}</p>
                   )}
                 </div>

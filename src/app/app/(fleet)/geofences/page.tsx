@@ -91,7 +91,13 @@ export default function GeofencesPage() {
 
   async function deleteFence(id: string) {
     if (!confirm("Geofence verwijderen?")) return;
-    await fetch(`/api/geofences/${id}`, { method: "DELETE" });
+    setError(null);
+    const res = await fetch(`/api/geofences/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => null);
+      setError(d?.error ?? `Verwijderen mislukt (${res.status})`);
+      return;
+    }
     void load();
   }
 

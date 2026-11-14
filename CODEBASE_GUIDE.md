@@ -94,6 +94,9 @@ GPS-tracking-system/
 │       ├── api-helpers.ts       # requireAuth / requireAdmin / jsonError
 │       ├── api-keys.ts          # API-key genereren/hash/valideren
 │       ├── validation.ts        # Zod-schemas (login, keys, ingest, source)
+│       ├── map-data.ts          # Gedeelde kaart-shaping (toMapVehicles, parseGeofences, …)
+│       ├── map-tiles.ts         # Gedeelde tileconfig (TILE_STYLES, TileStyle)
+│       ├── use-map-data.ts      # Polling-hooks (useIngestSources, useMapLayers, …)
 │       ├── audit.ts             # logAudit()
 │       ├── distance.ts          # Haversine + delta-berekening
 │       ├── config.ts            # Constants (OFFLINE_AFTER_MS, …)
@@ -164,6 +167,9 @@ GPS-tracking-system/
 | [src/lib/map-filters.ts](src/lib/map-filters.ts) | Gedeelde kaartfilter-state (pagina-scoped) | `useMapFilters()`, `applyLocationFilters()`, `MapFilterState`, `DEFAULT_FILTERS` | Nieuwe lagen/filters |
 | [src/components/map-filters.tsx](src/components/map-filters.tsx) | Filterpaneel-overlay op kaarten | default `MapFilterControl` | Filter-UI |
 | [src/components/tracking-map.tsx](src/components/tracking-map.tsx) | Kaart-component (OSM-tiles, markers, geofences, locaties, routes, zoekbalk via /api/geocode, locate, fullscreen, legenda) | `TrackingMap` (default), `SearchControl`, `LocateButton`, `MapController`, `vehicleIcon()`, types `MapVehicle`, `MapZone`, `MapLocation`, `RouteVisualization`, `SelectionMarker` | Kaartgedrag/UI/lagen |
+| [src/lib/map-data.ts](src/lib/map-data.ts) | Pure kaart-shaping (geen fetch/React) | `toMapVehicles()`, `parseGeofences()` (veilige per-row JSON.parse), `toMapLocations()`, type `VehicleSourceRow` | Nieuwe bron-/laagvormen |
+| [src/lib/use-map-data.ts](src/lib/use-map-data.ts) | Gedeelde polling-hooks (AbortController + seq-guard) | `useIngestSources()`, `useVehicleList()`, `useMapLayers()` | Nieuwe gegevens-poll op kaartpagina's |
+| [src/lib/map-tiles.ts](src/lib/map-tiles.ts) | Tileconfig gedeeld door TrackingMap + PolygonEditor | `TILE_STYLES`, `TileStyle` | Tile-provider wijzigen |
 | [src/lib/distance.ts](src/lib/distance.ts) | Haversine + stilstand/sprong-detectie | `haversineDistance()`, `calculateDistanceDelta()`, `calculateSpeed()`, `MIN_MOVEMENT_M`, `MAX_GAP_M`, `MAX_TIME_GAP_S` | Afstands-/snelheidsregels |
 | [src/lib/audit.ts](src/lib/audit.ts) | Audit-logregels | `logAudit(actorUserId, action, targetType, targetId, detail)` | Nieuwe audit-acties |
 | [src/lib/jobs/schedule.ts](src/lib/jobs/schedule.ts) | Planning-slots (2×/dag 09:00/21:00, TZ uit Settings, lookback 7d) | `DEFAULT_DEADLINE_SCHEDULE`, `LOOKBACK_DAYS`, `getDueSlots()`, `zonedToInstant()`, `localDateKey()` | Andere planning |
@@ -357,13 +363,20 @@ Wil ik X wijzigen → ga naar:
    (`SearchControl` via Photon/OSM zonder API-key; `LocateButton` via
    browser-geolocation); delen: `map/page.tsx` (`watchPosition` → ingest met
    key uit `localStorage["gps_browser_share_key"]`).
-2. **Beperking:** tiles zijn OSM (geen API-key); geolocation vereist
+2. **Gedeelde data-laag:** shaping in `lib/map-data.ts` (toMapVehicles,
+   parseGeofences, toMapLocations) + polling-hooks in `lib/use-map-data.ts`.
+   Pagina's kopieren deze logica **niet** — hooks/pfuncties hergebruiken.
+   Tiles: `lib/map-tiles.ts` (`TILE_STYLES`), gedeeld met PolygonEditor.
+3. **Beperking:** tiles zijn OSM (geen API-key); geolocation vereist
    HTTPS; delen maakt tracker `browser-<username>`.
+4. Tests: `npm run test:map` (Playwright-smoke: render, knop-layout,
+   zoeken, polygon tekenen).
 
 ### Geofences
 1. API `/api/geofences`; engine-check `pointInPolygon()` in `engine.ts`;
    teken-UI `polygon-editor.tsx` + `geofences/page.tsx`.
-2. Coördinaten worden opgeslagen als JSON-string `[[lat,lon],…]`.
+2. Coördinaten worden opgeslagen als JSON-string `[[lat,lon],…]`;
+   parser: `parseGeofences()` in `lib/map-data.ts` (veilig per rij).
 
 ### Taken (UI + API)
 1. API `/api/tasks`, `/api/tasks/[id]` (status-validatie +
@@ -405,7 +418,10 @@ anders):
 | `runDeadlineCheck(now)` | `lib/jobs/deadline-check.ts` | Overdue + meldingen | `runDueJobs` |
 | `runDueJobs(opts?)` | `lib/jobs/runner.ts` | Alle vervallen slots | `scripts/jobs.ts`, `test-jobs.mts` |
 | `getDueSlots()` | `lib/jobs/schedule.ts` | Slots t/m nu (TZ-aware) | `runDueJobs` |
-| `TrackingMap` (default) | `components/tracking-map.tsx` | Kaart met overlays | dashboard, map, history (dynamic, ssr:false) |
+| `TrackingMap` (default) | `components/tracking-map.tsx` | Kaart met overlays | dashboard, map, history, locations (dynamic, ssr:false) |
+| `toMapVehicles()` / `parseGeofences()` / `toMapLocations()` | `lib/map-data.ts` | Pure kaart-shaping | use-map-data, dashboard, history, locations |
+| `useIngestSources()` / `useVehicleList()` / `useMapLayers()` | `lib/use-map-data.ts` | Polling + foutafhandeling | dashboard, map, history |
+| `TILE_STYLES` | `lib/map-tiles.ts` | Tileconfig | tracking-map, polygon-editor |
 | `PolygonEditor` (default) | `components/polygon-editor.tsx` | Polygon tekenen | `geofences/page.tsx` |
 | `computeWorkerStatus()` | `lib/presence.ts` | Legacy statusbepaling | **geen aanroepr** (MVP v1-relic) |
 
@@ -566,6 +582,7 @@ Commands (geverifieerd in `package.json`):
 | `npm run test:trash` | 72 checks soft delete/prullenbak/authz | ja |
 | `npm run test:jobs` | 28 checks deadline-job (gecontroleerde `now`) | nee |
 | `npm run test:locations` | 59 checks locaties/routes/import/geocode (parser lokaal, API: server) | deels |
+| `npm run test:map` | Playwright-smoke kaartpagina's (render, knop-layout, zoeken, polygon) | ja |
 | `npm run jobs:once` | Eén jobslag | nee (DB wel) |
 | `npm run db:seed` | Admin seeden | DB |
 | `npm run admin:reset-password -- <pw>` | Wachtwoord resetten | DB |
@@ -580,6 +597,8 @@ npm start                      # venster 1
 npm run test:e2e               # venster 2
 npm run test:trash
 npm run test:jobs
+npm run test:locations
+npm run test:map               # Playwright (browser nodig)
 ```
 
 Waar tests staan: alleen in `scripts/` (geen testframework geïnstalleerd).
@@ -646,7 +665,7 @@ opschonen). Voeg npm-script toe. Gebruik unieke testnamen met `Date.now()`.
 | `auth-session.ts` + `proxy.ts` | Alle toegang loopt hierheen | Kleine, geteste wijzigingen; e2e + trash + jobs testen |
 | `ingest`-upsert op naam | Naam is identiteit van tracker; uniek in DB (incl. prullenbak) | Namen niet hernoemen zonder overleg; 409-gedrag is bewust |
 | `processIngest` in ingest | Events/meldingen direct bij elk GPS-punt | Fire-and-forget met catch; skip bij soft-deleted; cooldown 5 min |
-| `TrackingMap` | Gebruikt op 3 pagina's | Props-contract behouden; alle aanroeppagina's testen |
+| `TrackingMap` | Gebruikt op 4 pagina's (dashboard, map, history, locations) | Props-contract behouden; alle aanroeppagina's testen (`npm run test:map`) |
 | `job_runs` + `slotKey` | Idempotentie breekt als rijen verdwijnen | Niet handmatig wissen in productie; jobs draaien buiten piek |
 | `.env` / secrets | Database + admin-credentials | Nooit in git/docs; `NEXT_PUBLIC_*` is publiek |
 | API-key in `localStorage` (browser-delen) | Key leesbaar voor XSS | Self-hosted app; key alleen voor eigen ingest; intrekken via API Keys-pagina |

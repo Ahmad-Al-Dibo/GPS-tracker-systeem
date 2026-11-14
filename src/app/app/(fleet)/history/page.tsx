@@ -1,8 +1,10 @@
 "use client";
 
 // Trips & Historie-pagina
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { toMapVehicles } from "@/lib/map-data";
+import { useIngestSources } from "@/lib/use-map-data";
 
 const TrackingMap = dynamic(() => import("@/components/tracking-map"), {
   ssr: false,
@@ -13,19 +15,6 @@ const TrackingMap = dynamic(() => import("@/components/tracking-map"), {
   ),
 });
 
-type Source = {
-  id: string;
-  name: string;
-  displayName: string;
-  iconEmoji: string;
-  latitude: number | null;
-  longitude: number | null;
-  speedKmh: number | null;
-  moving: boolean;
-  status: string;
-  sampledAt: string | null;
-};
-
 type TrailPoint = {
   latitude: number;
   longitude: number;
@@ -34,53 +23,52 @@ type TrailPoint = {
 };
 
 export default function HistoryPage() {
-  const [sources, setSources] = useState<Source[]>([]);
+  // Eénmalig laden (geen poll — historie verandert niet tijdens het kijken)
+  const { sources, error: sourcesError } = useIngestSources(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [trail, setTrail] = useState<TrailPoint[]>([]);
   const [limit, setLimit] = useState(500);
-
-  const loadSources = useCallback(async () => {
-    const res = await fetch("/api/ingest/sources");
-    if (res.ok) {
-      const d = await res.json();
-      setSources(d.sources);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadSources();
-  }, [loadSources]);
+  const [trailError, setTrailError] = useState<string | null>(null);
+  const [trailLoading, setTrailLoading] = useState(false);
+  const trailSeqRef = useRef(0);
 
   const loadTrail = useCallback(
-    async (sourceId: string) => {
+    async (sourceId: string, pointLimit: number) => {
       const src = sources.find((s) => s.id === sourceId);
       if (!src) return;
-      const res = await fetch(
-        `/api/ingest/sources/${encodeURIComponent(src.name)}?limit=${limit}`
-      );
-      if (res.ok) {
+      // Sequence-guard: een tragere oudere request mag de nieuwere trail niet
+      // overschrijven (wisselen tussen voertuigen/limits).
+      const seq = ++trailSeqRef.current;
+      setTrailLoading(true);
+      setTrailError(null);
+      try {
+        const res = await fetch(
+          `/api/ingest/sources/${encodeURIComponent(src.name)}?limit=${pointLimit}`
+        );
+        if (seq !== trailSeqRef.current) return;
+        if (!res.ok) {
+          setTrail([]);
+          setTrailError(`Trail laden mislukt (${res.status})`);
+          return;
+        }
         const d = await res.json();
+        if (seq !== trailSeqRef.current) return;
         setTrail(d.trail);
+      } catch {
+        if (seq === trailSeqRef.current) {
+          setTrail([]);
+          setTrailError("Netwerkfout bij trail laden");
+        }
+      } finally {
+        if (seq === trailSeqRef.current) setTrailLoading(false);
       }
     },
-    [sources, limit]
+    [sources]
   );
 
-  const mapVehicles = sources
-    .filter((s) => s.latitude != null && s.longitude != null)
-    .map((s) => ({
-      id: s.id,
-      name: s.displayName,
-      iconEmoji: s.iconEmoji,
-      latitude: s.latitude!,
-      longitude: s.longitude!,
-      speedKmh: s.speedKmh,
-      moving: s.moving,
-      status: s.status,
-      observedAt: s.sampledAt ?? new Date().toISOString(),
-    }));
-
+  const mapVehicles = toMapVehicles(sources);
   const trailPath = trail.map((p) => [p.latitude, p.longitude] as [number, number]);
+  const error = sourcesError ?? trailError;
 
   return (
     <div className="flex h-full flex-col">
@@ -89,6 +77,11 @@ export default function HistoryPage() {
         <p className="text-sm text-slate-400">
           Bekijk historische routes van voertuigen
         </p>
+        {error && (
+          <p className="mt-2 rounded-lg bg-red-50 px-3 py-1.5 text-sm text-red-600">
+            {error}
+          </p>
+        )}
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[300px_1fr]">
@@ -98,8 +91,9 @@ export default function HistoryPage() {
             <select
               value={selectedId ?? ""}
               onChange={(e) => {
-                setSelectedId(e.target.value || null);
-                if (e.target.value) void loadTrail(e.target.value);
+                const id = e.target.value || null;
+                setSelectedId(id);
+                if (id) void loadTrail(id, limit);
                 else setTrail([]);
               }}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -118,8 +112,11 @@ export default function HistoryPage() {
             <select
               value={limit}
               onChange={(e) => {
-                setLimit(Number(e.target.value));
-                if (selectedId) void loadTrail(selectedId);
+                // Nieuw limit méteen doorgeven: de vorige code riep loadTrail
+                // aan met de gesloten OUDE limit-state (stale waarde).
+                const next = Number(e.target.value);
+                setLimit(next);
+                if (selectedId) void loadTrail(selectedId, next);
               }}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
             >
@@ -130,6 +127,10 @@ export default function HistoryPage() {
               <option value={2000}>2000</option>
             </select>
           </label>
+
+          {trailLoading && (
+            <p className="text-xs text-slate-400">Trail laden…</p>
+          )}
 
           {trail.length > 0 && (
             <div className="rounded-lg bg-white p-3 text-sm">
@@ -149,7 +150,7 @@ export default function HistoryPage() {
             trail={trailPath.length > 1 ? trailPath : undefined}
             onSelect={(id) => {
               setSelectedId(id);
-              void loadTrail(id);
+              void loadTrail(id, limit);
             }}
           />
         </section>
@@ -157,4 +158,3 @@ export default function HistoryPage() {
     </div>
   );
 }
-

@@ -17,6 +17,9 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
+import { TILE_STYLES, type TileStyle } from "@/lib/map-tiles";
+
+export type { TileStyle } from "@/lib/map-tiles";
 
 export type MapVehicle = {
   id: string;
@@ -70,9 +73,6 @@ export type SelectionMarker = {
   pos: [number, number];
   label: string;
 };
-
-/** Tilesoort: osm = gratis standaard; carto = donker (optioneel) */
-export type TileStyle = "osm" | "carto";
 
 type Props = {
   vehicles: MapVehicle[];
@@ -176,29 +176,28 @@ function MapController({
   followId,
 }: Pick<Props, "vehicles" | "selectedId" | "followId">) {
   const map = useMap();
-  const followingRef = useRef(false);
+  // Eén flyTo per selectie: zonder deze guard zou elke poll-update (nieuwe
+  // array-identiteit) opnieuw centreren en zou weggepande kaarten terug springen.
+  const lastFlownIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!selectedId) {
-      followingRef.current = false;
+      lastFlownIdRef.current = null;
       return;
     }
+    if (lastFlownIdRef.current === selectedId) return;
     const v = vehicles.find((x) => x.id === selectedId);
-    if (!v) return;
+    if (!v) return; // wacht tot het voertuig in de lijst staat
+    lastFlownIdRef.current = selectedId;
     map.flyTo([v.latitude, v.longitude], Math.min(Math.max(map.getZoom(), 14), 18), {
       duration: 0.7,
     });
-    followingRef.current = followId === selectedId;
-  }, [selectedId, map]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedId, vehicles, map]);
 
   useEffect(() => {
-    if (!followId) {
-      followingRef.current = false;
-      return;
-    }
+    if (!followId) return;
     const v = vehicles.find((x) => x.id === followId);
     if (!v) return;
-    followingRef.current = true;
     map.panTo([v.latitude, v.longitude], { animate: true, duration: 0.5 });
   }, [followId, vehicles, map]);
 
@@ -283,12 +282,14 @@ function ContextMenuHandler({
       <div className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-slate-400">
         {lat.toFixed(5)}, {lon.toFixed(5)}
       </div>
-      <button
-        onClick={handleSave}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50"
-      >
-        💾 <span className="font-medium">Opslaan als locatie</span>
-      </button>
+      {onSaveAsLocation && (
+        <button
+          onClick={handleSave}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50"
+        >
+          💾 <span className="font-medium">Opslaan als locatie</span>
+        </button>
+      )}
       <button
         onClick={handleSearchHere}
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50"
@@ -557,31 +558,35 @@ function SearchControl({
               </span>
               <br />
               <span style={{ fontSize: 11, color: "#94a3b8" }}>Tijdelijke selectie</span>
-              <br />
-              <button
-                data-save-location="1"
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  onSaveSelection?.(marker);
-                }}
-                style={{
-                  marginTop: 6,
-                  background: "#2563eb",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
-                  padding: "6px 14px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                💾 Opslaan als locatie
-              </button>
+              {onSaveSelection && (
+                <>
+                  <br />
+                  <button
+                    data-save-location="1"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      onSaveSelection(marker);
+                    }}
+                    style={{
+                      marginTop: 6,
+                      background: "#2563eb",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "6px 14px",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    💾 Opslaan als locatie
+                  </button>
+                </>
+              )}
             </div>
           </Popup>
         </Marker>
@@ -596,13 +601,15 @@ function LocateButton() {
   const map = useMap();
   const [pos, setPos] = useState<{ pos: [number, number]; accuracy: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const locate = useCallback(() => {
     if (!navigator.geolocation) {
-      alert("Locatiebepaling wordt niet ondersteund door deze browser.");
+      setError("Locatiebepaling wordt niet ondersteund door deze browser.");
       return;
     }
     setBusy(true);
+    setError(null);
     navigator.geolocation.getCurrentPosition(
       (p) => {
         const ll: [number, number] = [p.coords.latitude, p.coords.longitude];
@@ -612,9 +619,9 @@ function LocateButton() {
       },
       (err) => {
         setBusy(false);
-        alert(
-          `Locatie niet beschikbaar: ${err.message}. Sta locatietoegang toe in je browser.`
-        );
+        // Inline i.p.v. alert(): blokkeert de kaart niet en blijft zichtbaar
+        // totdat de gebruiker het opnieuw probeert.
+        setError(`${err.message} — sta locatietoegang toe in je browser.`);
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 30_000 }
     );
@@ -629,14 +636,21 @@ function LocateButton() {
 
   return (
     <>
+      {/* Onder de fullscreen-knop (die ook right-3 top-3 staat): 12px marge
+          sluit aan op de 108px zoom-offset in globals.css. */}
       <button
         onClick={locate}
         disabled={busy}
         title="Ga naar mijn locatie (browser-GPS)"
-        className="absolute right-3 top-3 z-[10] flex h-9 w-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 sm:w-auto sm:px-3"
+        className="absolute right-3 top-[60px] z-[10] flex h-9 w-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 sm:w-auto sm:px-3"
       >
         ◎<span className="hidden sm:inline">{busy ? "Bepalen…" : "Mijn locatie"}</span>
       </button>
+      {error && (
+        <div className="absolute bottom-3 right-3 z-[10] max-w-[260px] rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-600 shadow-sm">
+          {error}
+        </div>
+      )}
 
       {pos && (
         <>
@@ -740,21 +754,24 @@ export default function TrackingMap({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const toggleFullscreen = useCallback(() => {
-    if (!isFullscreen && containerRef.current) {
-      containerRef.current.requestFullscreen?.().catch(() => {});
-    } else {
-      document.exitFullscreen?.().catch(() => {});
-    }
-    setIsFullscreen(!isFullscreen);
-  }, [isFullscreen]);
-
+  // Status volgt de Fullscreen API (fullscreenchange) i.p.v. optimistische
+  // setState: als requestFullscreen() faalt blijft de UI niet "geblokkeerd"
+  // in fixed-inset-0 modus zonder dat er echt fullscreen actief is.
   useEffect(() => {
-    const handler = () => {
-      if (!document.fullscreenElement) setIsFullscreen(false);
-    };
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", handler);
     return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      void containerRef.current?.requestFullscreen?.().catch(() => {
+        // Browser weigerde (bijv. iframe-beperking); state blijft ongewijzigd
+        // door fullscreenchange niet af te vuren.
+      });
+    } else {
+      void document.exitFullscreen?.().catch(() => {});
+    }
   }, []);
 
   const center = useMemo<[number, number]>(() => {
@@ -770,30 +787,7 @@ export default function TrackingMap({
     [trail]
   );
 
-  const tileProps =
-    tileStyle === "carto"
-      ? {
-          url: `https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${process.env.NEXT_PUBLIC_CARTO_KEY ?? ""}`,
-          attribution:
-            '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
-          maxZoom: 18 as const,
-          subdomains: "abcd",
-        }
-      : tileStyle === "osm"
-        ? {
-            url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-            attribution:
-              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-            maxZoom: 18 as const,
-            subdomains: undefined,
-          }
-        : {
-            url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-            attribution:
-              '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
-            maxZoom: 18 as const,
-            subdomains: "abcd",
-          };
+  const tileProps = TILE_STYLES[tileStyle];
 
   const routePositions = useMemo<[number, number][]>(() => {
     if (!routeLine) return [];

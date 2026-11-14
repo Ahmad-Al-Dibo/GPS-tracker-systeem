@@ -16,7 +16,8 @@
     "test:e2e": "tsx scripts/e2e-api.mts",
     "test:trash": "tsx scripts/test-trash.mts",
     "test:jobs": "tsx scripts/test-jobs.mts",
-    "test:locations": "tsx scripts/test-locations.mts"
+    "test:locations": "tsx scripts/test-locations.mts",
+    "test:map": "tsx scripts/test-map-smoke.mts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

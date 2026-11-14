@@ -1,8 +1,8 @@
 "use client";
 
 // Polygon-tekenaar voor geofences — klik punten op de kaart om een gesloten zone te maken
-// Kaarttiles: OpenStreetMap (geen API-key/externe dienst nodig)
-import { useEffect, useMemo, useState, useCallback } from "react";
+// Kaarttiles: gedeelde TILE_STYLES uit tracking-map (geen dubbele tile-config)
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -11,6 +11,7 @@ import {
   useMapEvents,
   useMap,
 } from "react-leaflet";
+import { TILE_STYLES } from "@/lib/map-tiles";
 
 type Props = {
   /** Bestaande polygon-coördinaten [[lat,lon],...] */
@@ -80,22 +81,18 @@ function DrawInfo({
       </p>
       {pointCount > 0 && (
         <div className="mt-1 flex gap-2">
-          {pointCount > 0 && (
-            <button
-              onClick={onUndo}
-              className="text-xs text-blue-600 hover:underline"
-            >
-              ↩ Ongedaan
-            </button>
-          )}
-          {pointCount > 0 && (
-            <button
-              onClick={onClear}
-              className="text-xs text-red-500 hover:underline"
-            >
-              🗑 Wissen
-            </button>
-          )}
+          <button
+            onClick={onUndo}
+            className="text-xs text-blue-600 hover:underline"
+          >
+            ↩ Ongedaan
+          </button>
+          <button
+            onClick={onClear}
+            className="text-xs text-red-500 hover:underline"
+          >
+            🗑 Wissen
+          </button>
         </div>
       )}
     </div>
@@ -109,25 +106,36 @@ export default function PolygonEditor({
 }: Props) {
   const [points, setPoints] = useState<[number, number][]>(initialCoords ?? []);
 
+  // Synchroniseer bij wisselende initialCoords (bijv. ander geofence
+  // selecteren in weergave-modus). Zonder deze effect bleef de vorige
+  // polygon staan. Content-vergelijking voorkomt oneindige re-renders bij
+  // inline-array-props.
+  const initialKey = JSON.stringify(initialCoords ?? []);
+  const lastInitialKeyRef = useRef(initialKey);
+  useEffect(() => {
+    if (initialKey !== lastInitialKeyRef.current) {
+      lastInitialKeyRef.current = initialKey;
+      setPoints(initialCoords ?? []);
+    }
+  }, [initialKey, initialCoords]);
+
+  // Side-effects (onChange) nooit in een state-updater: React kan updaters
+  // opnieuw uitvoeren (StrictMode), wat zou leiden tot dubbele callbacks.
   const addPoint = useCallback(
     (lat: number, lon: number) => {
       if (readOnly) return;
-      setPoints((prev) => {
-        const next = [...prev, [lat, lon] as [number, number]];
-        onChange?.(next);
-        return next;
-      });
+      const next: [number, number][] = [...points, [lat, lon]];
+      setPoints(next);
+      onChange?.(next);
     },
-    [onChange, readOnly]
+    [points, onChange, readOnly]
   );
 
   const undoPoint = useCallback(() => {
-    setPoints((prev) => {
-      const next = prev.slice(0, -1);
-      onChange?.(next);
-      return next;
-    });
-  }, [onChange]);
+    const next = points.slice(0, -1);
+    setPoints(next);
+    onChange?.(next);
+  }, [points, onChange]);
 
   const clearPoints = useCallback(() => {
     setPoints([]);
@@ -160,9 +168,9 @@ export default function PolygonEditor({
         maxZoom={18}
       >
         <TileLayer
-          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          maxZoom={18}
+          url={TILE_STYLES.osm.url}
+          attribution={TILE_STYLES.osm.attribution}
+          maxZoom={TILE_STYLES.osm.maxZoom}
         />
 
         <DrawHandler
