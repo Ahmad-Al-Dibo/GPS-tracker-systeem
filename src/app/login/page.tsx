@@ -7,7 +7,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const callbackUrl = params.get("callbackUrl") ?? "/app";
+  // Alleen relatieve paden toestaan: "//evil.com" en "https://evil.com"
+  // mogen een net-ingelogde gebruiker niet van de site afleiden (open redirect).
+  const rawCallback = params.get("callbackUrl") ?? "/app";
+  const callbackUrl =
+    rawCallback.startsWith("/") && !rawCallback.startsWith("//") ? rawCallback : "/app";
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -86,7 +90,7 @@ function LoginForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+        className="login-submit w-full rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
       >
         {loading ? "Bezig met inloggen…" : "Log In"}
       </button>
@@ -96,17 +100,20 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+    <div className="login-shell flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-2xl text-white shadow-lg">
-            📍
+          <span className="login-logo mx-auto flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg">
+            <svg viewBox="0 0 36 36" fill="none" aria-hidden="true">
+              <path d="M18 33s11-10.2 11-19A11 11 0 0 0 7 14c0 8.8 11 19 11 19Z" fill="currentColor" />
+              <circle cx="18" cy="14" r="4" fill="#10203a" />
+            </svg>
           </span>
           <h1 className="mt-4 text-2xl font-bold text-slate-900">GPS Manager</h1>
           <p className="mt-1 text-sm text-slate-500">Secure · Track · Manage</p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="login-card rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-1 text-lg font-semibold text-slate-900">Admin Login</h2>
           <p className="mb-5 text-sm text-slate-500">
             Log in om toegang te krijgen tot het GPS-managementsysteem.

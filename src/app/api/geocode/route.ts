@@ -19,7 +19,12 @@ export async function GET(req: NextRequest) {
     const { results, provider } = await geocode(q);
     return NextResponse.json({ results, provider });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Onbekende fout";
-    return NextResponse.json({ error: `Geocoding mislukt: ${message}` }, { status: 502 });
+    // Upstream-tekst (Photon/Nominatim) niet teruggeven aan de client;
+    // volledige fout wel server-side zodat debugging mogelijk blijft.
+    console.error("[geocode] provider failure:", err);
+    return NextResponse.json(
+      { error: "Geocoding mislukt — externe dienst tijdelijk niet beschikbaar" },
+      { status: 502 }
+    );
   }
 }

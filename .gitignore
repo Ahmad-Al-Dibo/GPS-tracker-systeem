@@ -40,6 +40,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# lokale secrets/scripts (nooit in git)
+*.local.cmd
+
 # vercel
 .vercel
 

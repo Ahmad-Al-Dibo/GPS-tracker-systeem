@@ -36,7 +36,7 @@ bcryptjs · tsx (scripts)
 | Entry | Pad | Rol |
 |---|---|---|
 | Web-app (App Router) | `src/app/` | Pagina's + API-routes |
-| Route-guard (Next 16 "proxy") | `src/proxy.ts` | Middleware: sessie-controle op gematchte routes |
+| Route-guard (Next 16 "proxy") | `src/proxy.ts` | Default-deny: sessie-controle op `/app/*` + `/api/*` (publieke uitzonderingen in `isPublic`) |
 | Ingest (extern) | `POST /api/ingest` | GPS-punten van apparaten (API-key auth) |
 | Background jobs | `scripts/jobs.ts` | Deadline-check daemon/once |
 | Seed | `prisma/seed.ts` | Admin-account aanmaken |
@@ -150,7 +150,7 @@ GPS-tracking-system/
 | Bestand | Verantwoordelijkheid | Belangrijke symbolen | Wijzigen bij |
 |---|---|---|---|
 | [prisma/schema.prisma](prisma/schema.prisma) | Volledig datamodel | `User`, `Session`, `ApiKey`, `IngestSource`, `IngestPoint`, `Person`, `VehiclePerson`, `Rule`, `RuleCondition`, `Event`, `EventPoint`, `Geofence`, `Task`, `Notification`, `Settings`, `AuditLog`, `JobRun`; enums `Role`, `EventStatus`, `Severity`, `TaskStatus` (incl. `overdue`), `JobRunStatus` | Nieuwe velden/relaties → daarna `prisma migrate dev` |
-| [src/proxy.ts](src/proxy.ts) | Route-guard vóór elke gematchte request | `proxy()`, `config.matcher` | Nieuwe protected routes toevoegen aan matcher; publieke routes eruit laten |
+| [src/proxy.ts](src/proxy.ts) | Route-guard vóór elke request in de matcher (`/app/*`, `/api/*`) | `proxy()`, `config.matcher`, `isPublic` | Nieuwe **publieke** routes toevoegen aan `isPublic`; beschermd is de default |
 | [src/lib/auth-session.ts](src/lib/auth-session.ts) | DB-sessies in httpOnly-cookie `gps_session_id` (TTL 12u, één sessie per gebruiker) | `SESSION_COOKIE`, `createSession()`, `revokeSession()`, `getAuth()`, `AuthContext` | Auth-mechaniek (cookie-naam, TTL) |
 | [src/lib/api-helpers.ts](src/lib/api-helpers.ts) | Autorisatie-guards voor route-handlers | `requireAuth()`, `requireAdmin()`, `jsonError()` | Nieuwe rollen/statussen |
 | [src/lib/api-keys.ts](src/lib/api-keys.ts) | API-keys: `gpta_` + 48 hex; opslaan als SHA-256 | `generateApiKey()`, `validateApiKey()`, `sha256()`, `API_KEY_PREFIX` | Key-formaat/hashing |
@@ -178,7 +178,7 @@ GPS-tracking-system/
 
 | Route | Methoden | Auth | Opmerking |
 |---|---|---|---|
-| `/api/auth/login` | POST | publiek | identifier = email óf username; bcrypt; `createSession` |
+| `/api/auth/login` | POST | publiek | identifier = email óf username; bcrypt; `createSession`; rate-limit 5/15 min + audit |
 | `/api/auth/logout` | POST | cookie | `revokeSession` |
 | `/api/auth/register` | — | — | **Bestaat niet** (verwijderd; 404) |
 | `/api/me` | GET | sessie | retourneert `AuthUser` |
@@ -255,8 +255,9 @@ Wil ik X wijzigen → ga naar:
 4. **Tests:** `scripts/e2e-api.mts` (checks 1, 9–11); `scripts/test-trash.mts`
    (401/403-checks).
 5. **Beperkingen:** geen JWT; sessies zijn server-side; **nooit** raw
-   wachtwoorden/key opslaan; proxy-matcher is selectief — route-handlers
-   moeten alsnog `requireAuth` aanroepen.
+   wachtwoorden/key opslaan; proxy is default-deny op `/api/*` — route-handels
+   roepen alsnog `requireAuth` aan (defence-in-depth). Login heeft
+   in-memory rate-limit (5/15 min per IP+identifier) + audit-logging.
 
 ### API-key authenticatie (apparaten)
 1. `src/lib/api-keys.ts` → `src/app/api/ingest/route.ts`; beheer:
@@ -467,8 +468,9 @@ niet-cripplend (`.catch` in ingest).
 4. Roep Prisma aan; filter soft-deleted records waar relevant
    (`deletedAt: null`).
 5. Serialize datums expliciet (`.toISOString()`).
-6. Voeg toe aan `config.matcher` in `src/proxy.ts` **of** vertrouw op
-   `requireAuth` (aanbevolen: altijd requireAuth, matcher optioneel).
+6. Nieuwe routes vallen automatisch onder de proxy-matcher (`/api/:path*`).
+   Alleen écht publieke endpoints toevoegen aan `isPublic` in `src/proxy.ts`;
+   beschermd is de default. `requireAuth` blijft verplicht in de handler.
 7. Log gevoelige acties met `logAudit()`.
 8. Tests: uitbreiding in `scripts/test-trash.mts`-stijl (HTTP + prisma) of
    nieuwe `scripts/test-*.mts` + npm-script in `package.json`.
@@ -544,10 +546,9 @@ niet-cripplend (`.catch` in ingest).
 
 **Aanbevolen regels (nog niet formeel aangenomen):**
 
-1. Nieuwe routes toevoegen aan `proxy.matcher` voor defence-in-depth.
-2. `processStaleEvents()` koppelen aan de job-runner of verwijderen.
-3. Unit-tests per lib-module (nu alleen script-gebaseerde integration-tests).
-4. Rate-limiting op `/api/auth/login` en `/api/ingest`.
+1. `processStaleEvents()` koppelen aan de job-runner of verwijderen.
+2. Unit-tests per lib-module (nu alleen script-gebaseerde integration-tests).
+3. Rate-limiting op `/api/ingest` (login heeft al in-memory limiter).
 
 ---
 
