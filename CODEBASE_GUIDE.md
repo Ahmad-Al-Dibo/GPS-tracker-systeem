@@ -88,25 +88,23 @@ GPS-tracking-system/
 │   ├── components/              # Gedeelde client-components
 │   │   ├── tracking-map.tsx     # Kaart (zoekblocs, locate, markers, fullscreen)
 │   │   └── polygon-editor.tsx   # Geofence-tekenaar
-│   ├── lib/                     # Server-/businesslogic
-│   │   ├── db.ts                # Prisma-singleton
-│   │   ├── auth-session.ts      # DB-sessies + cookie
-│   │   ├── api-helpers.ts       # requireAuth / requireAdmin / jsonError
-│   │   ├── api-keys.ts          # API-key genereren/hash/valideren
-│   │   ├── validation.ts        # Zod-schemas (login, keys, ingest, source)
-│   │   ├── validation-ingest.ts # Duplicaat-variant (zie Constraints!)
-│   │   ├── audit.ts             # logAudit()
-│   │   ├── distance.ts          # Haversine + delta-berekening
-│   │   ├── config.ts            # Constants (OFFLINE_AFTER_MS, …)
-│   │   ├── presence.ts          # computeWorkerStatus() — GEEN aanroepr (legacy)
-│   │   ├── rules/
-│   │   │   ├── engine.ts        # Regel-evaluatie (condities, planning, geofence)
-│   │   │   └── events.ts        # Event-detectie + bewijs + notificaties
-│   │   └── jobs/
-│   │       ├── schedule.ts      # Slots 09:00/21:00, tijdzone, lookback
-│   │       ├── deadline-check.ts# Kernlogica deadline-controle
-│   │       └── runner.ts        # JobRun-logging + idempotente uitvoering
-│   └── types/                   # LEEG (overblijfsel — niet gebruikt)
+│   └── lib/                     # Server-/businesslogic
+│       ├── db.ts                # Prisma-singleton
+│       ├── auth-session.ts      # DB-sessies + cookie
+│       ├── api-helpers.ts       # requireAuth / requireAdmin / jsonError
+│       ├── api-keys.ts          # API-key genereren/hash/valideren
+│       ├── validation.ts        # Zod-schemas (login, keys, ingest, source)
+│       ├── audit.ts             # logAudit()
+│       ├── distance.ts          # Haversine + delta-berekening
+│       ├── config.ts            # Constants (OFFLINE_AFTER_MS, …)
+│       ├── presence.ts          # computeWorkerStatus() — GEEN aanroepr (legacy)
+│       ├── rules/
+│       │   ├── engine.ts        # Regel-evaluatie (condities, planning, geofence)
+│       │   └── events.ts        # Event-detectie + bewijs + notificaties
+│       └── jobs/
+│           ├── schedule.ts      # Slots 09:00/21:00, tijdzone, lookback
+│           ├── deadline-check.ts# Kernlogica deadline-controle
+│           └── runner.ts        # JobRun-logging + idempotente uitvoering
 ├── prisma/
 │   ├── schema.prisma            # Hele datamodel (bron van waarheid)
 │   ├── seed.ts                  # Admin-account via env-variabelen
@@ -182,7 +180,7 @@ GPS-tracking-system/
 |---|---|---|---|
 | `/api/auth/login` | POST | publiek | identifier = email óf username; bcrypt; `createSession` |
 | `/api/auth/logout` | POST | cookie | `revokeSession` |
-| `/api/auth/register` | — | — | **Bestaat niet** (lege map; 404) |
+| `/api/auth/register` | — | — | **Bestaat niet** (verwijderd; 404) |
 | `/api/me` | GET | sessie | retourneert `AuthUser` |
 | `/api/ingest` | POST | **X-API-Key** | upsert `IngestSource` op `name`; maakt `IngestPoint`; afstand; regels (overgeslagen bij soft-deleted bron) |
 | `/api/ingest/sources` | GET | sessie | laatste posities; filtert `deletedAt: null`; niet-admin: eigen bronnen |
@@ -547,11 +545,9 @@ niet-cripplend (`.catch` in ingest).
 **Aanbevolen regels (nog niet formeel aangenomen):**
 
 1. Nieuwe routes toevoegen aan `proxy.matcher` voor defence-in-depth.
-2. `validation-ingest.ts` samenvoegen met `validation.ts` (duplicaat).
-3. `src/types/` verwijderen of vullen (nu leeg).
-4. `processStaleEvents()` koppelen aan de job-runner of verwijderen.
-5. Unit-tests per lib-module (nu alleen script-gebaseerde integration-tests).
-6. Rate-limiting op `/api/auth/login` en `/api/ingest`.
+2. `processStaleEvents()` koppelen aan de job-runner of verwijderen.
+3. Unit-tests per lib-module (nu alleen script-gebaseerde integration-tests).
+4. Rate-limiting op `/api/auth/login` en `/api/ingest`.
 
 ---
 
