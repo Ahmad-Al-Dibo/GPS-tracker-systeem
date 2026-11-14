@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ErrorBanner } from "@/components/ui";
+import { apiRequest, jsonRequest } from "@/lib/http";
 
 type Vehicle = {
   id: string;
@@ -42,10 +43,13 @@ export default function VehiclesPage() {
   });
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/vehicles");
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/vehicles");
+      if (!res.ok) throw new Error(`Fout ${res.status}`);
       const d = await res.json();
       setVehicles(d.vehicles);
+    } catch {
+      setError("Voertuigen laden mislukt");
     }
   }, []);
 
@@ -56,29 +60,19 @@ export default function VehiclesPage() {
   async function save() {
     if (!form.name.trim()) { setError("Naam is verplicht"); return; }
     setError(null);
-    try {
-      const res = await fetch("/api/vehicles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          yearOfBuild: form.yearOfBuild ? Number(form.yearOfBuild) : null,
-          startingKm: form.startingKm ? Number(form.startingKm) : null,
-          licensePlate: form.licensePlate || null, brand: form.brand || null,
-          vehicleType: form.vehicleType || null, color: form.color || null,
-          vehicleGroup: form.vehicleGroup || null, notes: form.notes || null,
-          trackerSerial: form.trackerSerial || null, trackerBrand: form.trackerBrand || null,
-          trackerType: form.trackerType || null, simCardNumber: form.simCardNumber || null,
-        }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => null);
-        setError(d?.error ?? `Fout ${res.status}`);
-        return;
-      }
-      setShowForm(false);
-      void load();
-    } catch { setError("Netwerkfout"); }
+    const r = await apiRequest("/api/vehicles", jsonRequest("POST", {
+      ...form,
+      yearOfBuild: form.yearOfBuild ? Number(form.yearOfBuild) : null,
+      startingKm: form.startingKm ? Number(form.startingKm) : null,
+      licensePlate: form.licensePlate || null, brand: form.brand || null,
+      vehicleType: form.vehicleType || null, color: form.color || null,
+      vehicleGroup: form.vehicleGroup || null, notes: form.notes || null,
+      trackerSerial: form.trackerSerial || null, trackerBrand: form.trackerBrand || null,
+      trackerType: form.trackerType || null, simCardNumber: form.simCardNumber || null,
+    }));
+    if (!r.ok) { setError(r.error); return; }
+    setShowForm(false);
+    void load();
   }
 
   const filtered = vehicles.filter(

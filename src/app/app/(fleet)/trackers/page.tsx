@@ -3,6 +3,7 @@
 // GPS-trackers-pagina — light theme, app-bron = alleen naam verplicht
 import { useCallback, useEffect, useState } from "react";
 import { ErrorBanner } from "@/components/ui";
+import { apiRequest, jsonRequest } from "@/lib/http";
 
 type Tracker = {
   id: string;
@@ -39,23 +40,24 @@ export default function TrackersPage() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const [tRes, vRes] = await Promise.all([
-      fetch("/api/trackers"),
-      fetch("/api/vehicles"),
-    ]);
-    if (tRes.ok) {
-      const d = await tRes.json();
-      setTrackers(d.trackers);
-    }
-    if (vRes.ok) {
-      const d = await vRes.json();
+    try {
+      const [tRes, vRes] = await Promise.all([
+        fetch("/api/trackers"),
+        fetch("/api/vehicles"),
+      ]);
+      if (!tRes.ok || !vRes.ok) throw new Error("fetch failed");
+      const t = await tRes.json();
+      setTrackers(t.trackers);
+      const v = await vRes.json();
       setVehicles(
-        d.vehicles.map((v: { id: string; displayName: string; licensePlate: string | null }) => ({
-          id: v.id,
-          displayName: v.displayName,
-          licensePlate: v.licensePlate,
+        v.vehicles.map((veh: { id: string; displayName: string; licensePlate: string | null }) => ({
+          id: veh.id,
+          displayName: veh.displayName,
+          licensePlate: veh.licensePlate,
         }))
       );
+    } catch {
+      setError("Trackers laden mislukt");
     }
   }, []);
 
@@ -76,28 +78,21 @@ export default function TrackersPage() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/trackers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name.trim(),
-          serialNumber: form.serialNumber.trim() || `APP-${Date.now()}`,
-          brand: form.brand || null,
-          trackerType: form.trackerType || null,
-          simCardNumber: form.simCardNumber || null,
-          sourceType: form.sourceType,
-        }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        setError(data?.error ?? `Fout ${res.status}`);
+      const r = await apiRequest("/api/trackers", jsonRequest("POST", {
+        name: form.name.trim(),
+        serialNumber: form.serialNumber.trim() || `APP-${Date.now()}`,
+        brand: form.brand || null,
+        trackerType: form.trackerType || null,
+        simCardNumber: form.simCardNumber || null,
+        sourceType: form.sourceType,
+      }));
+      if (!r.ok) {
+        setError(r.error);
         return;
       }
       setShowForm(false);
       setForm({ name: "", serialNumber: "", brand: "", trackerType: "", simCardNumber: "", sourceType: "app" });
       void load();
-    } catch {
-      setError("Netwerkfout");
     } finally {
       setSaving(false);
     }

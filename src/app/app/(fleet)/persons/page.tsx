@@ -3,6 +3,7 @@
 // Personen-pagina: lijst, toevoegen, bewerken, verwijderen
 import { useCallback, useEffect, useState } from "react";
 import { ErrorBanner } from "@/components/ui";
+import { apiRequest, jsonRequest } from "@/lib/http";
 
 type Person = {
   id: string;
@@ -37,10 +38,13 @@ export default function PersonsPage() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/persons");
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/persons");
+      if (!res.ok) throw new Error(`Fout ${res.status}`);
       const d = await res.json();
       setPersons(d.persons);
+    } catch {
+      setError("Personen laden mislukt");
     }
   }, []);
 
@@ -58,21 +62,13 @@ export default function PersonsPage() {
     try {
       const isNew = editing === "new";
       const url = isNew ? "/api/persons" : `/api/persons/${(editing as Person).id}`;
-      const method = isNew ? "POST" : "PATCH";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        setError(data?.error ?? `Fout ${res.status}`);
+      const r = await apiRequest(url, jsonRequest(isNew ? "POST" : "PATCH", form));
+      if (!r.ok) {
+        setError(r.error);
         return;
       }
       setEditing(null);
       void load();
-    } catch {
-      setError("Netwerkfout");
     } finally {
       setSaving(false);
     }

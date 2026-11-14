@@ -3,6 +3,8 @@
 // Alerts & Events-pagina
 import { useCallback, useEffect, useState } from "react";
 import { formatDateTime } from "@/lib/format";
+import { ErrorBanner } from "@/components/ui";
+import { apiRequest, jsonRequest } from "@/lib/http";
 
 type EventRow = {
   id: string;
@@ -27,16 +29,21 @@ export default function AlertsPage() {
   const [severityFilter, setSeverityFilter] = useState("");
   const [selected, setSelected] = useState<EventRow | null>(null);
   const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const params = new URLSearchParams();
     if (statusFilter) params.set("status", statusFilter);
     if (severityFilter) params.set("severity", severityFilter);
-    const res = await fetch(`/api/events?${params}&limit=100`);
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/events?${params}&limit=100`);
+      if (!res.ok) throw new Error(`Fout ${res.status}`);
       const d = await res.json();
       setEvents(d.events);
       setTotal(d.total);
+      setError(null);
+    } catch {
+      setError("Events laden mislukt — getoonde lijst is mogelijk verouderd.");
     }
   }, [statusFilter, severityFilter]);
 
@@ -45,11 +52,14 @@ export default function AlertsPage() {
   }, [load]);
 
   async function updateEvent(id: string, data: Record<string, unknown>) {
-    await fetch(`/api/events/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
+    // Alleen bij succes sluiten: bij een fout bleef de vorige versie de modal
+    // sowieso sluiten en verdween de melding stil.
+    const r = await apiRequest(`/api/events/${id}`, jsonRequest("PATCH", data));
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    setError(null);
     void load();
     setSelected(null);
   }
@@ -97,6 +107,8 @@ export default function AlertsPage() {
           </select>
         </div>
       </div>
+
+      <ErrorBanner>{error}</ErrorBanner>
 
       <div className="overflow-hidden rounded-xl border border-slate-200">
         <table className="w-full text-sm">

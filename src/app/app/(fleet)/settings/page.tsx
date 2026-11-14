@@ -1,7 +1,8 @@
 "use client";
 
 // Instellingen-pagina: iedereen mag bekijken; alleen admin wijzigt
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { apiRequest, jsonRequest } from "@/lib/http";
 
 type Settings = {
   timezone: string;
@@ -18,33 +19,57 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [me, setMe] = useState<{ role: string } | null>(null);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Timer bijhouden zodat hij bij unmount wordt opgeruimd (anders setState
+  // na verlaten pagina).
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
 
   const load = useCallback(async () => {
-    const [meRes, sRes] = await Promise.all([
-      fetch("/api/me"),
-      fetch("/api/settings"),
-    ]);
-    if (meRes.ok) setMe(await meRes.json());
-    if (sRes.ok) setSettings(await sRes.json());
+    try {
+      const [meRes, sRes] = await Promise.all([
+        fetch("/api/me"),
+        fetch("/api/settings"),
+      ]);
+      if (meRes.ok) setMe(await meRes.json());
+      if (sRes.ok) setSettings(await sRes.json());
+      else setError("Instellingen laden mislukt");
+    } catch {
+      setError("Netwerkfout bij laden");
+    }
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (!settings) return <div className="p-6 text-slate-400">Laden…</div>;
+  if (!settings) {
+    return (
+      <div className="p-6">
+        {error ? (
+          <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p>
+        ) : (
+          <p className="text-slate-400">Laden…</p>
+        )}
+      </div>
+    );
+  }
   const isAdmin = me?.role === "admin";
 
   async function save() {
-    const res = await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
-    });
-    if (res.ok) {
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+    setError(null);
+    const r = await apiRequest("/api/settings", jsonRequest("PATCH", settings));
+    if (!r.ok) {
+      setError(r.error);
+      return;
     }
+    setSaved(true);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = setTimeout(() => setSaved(false), 2000);
   }
 
   return (
@@ -52,8 +77,12 @@ export default function SettingsPage() {
       <h1 className="mb-1 text-2xl font-bold">Instellingen</h1>
       <p className="mb-6 text-sm text-slate-400">
         Centrale configuratie voor het platform
-        {!isAdmin && " Â· alleen-lezen"}
+        {!isAdmin && " · alleen-lezen"}
       </p>
+
+      {error && (
+        <p className="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p>
+      )}
 
       <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-6">
         <div className="grid gap-5 sm:grid-cols-2">
@@ -153,7 +182,7 @@ export default function SettingsPage() {
               Opslaan
             </button>
             {saved && (
-              <span className="text-sm text-emerald-400">âœ“ Opgeslagen</span>
+              <span className="text-sm text-emerald-400">✓ Opgeslagen</span>
             )}
           </div>
         )}

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { ErrorBanner } from "@/components/ui";
+import { apiRequest, jsonRequest } from "@/lib/http";
 
 const PolygonEditor = dynamic(() => import("@/components/polygon-editor"), {
   ssr: false,
@@ -35,14 +36,20 @@ export default function GeofencesPage() {
   const [viewing, setViewing] = useState<Geofence | null>(null);
 
   const load = useCallback(async () => {
-    const [meRes, res] = await Promise.all([
-      fetch("/api/me"),
-      fetch("/api/geofences"),
-    ]);
-    if (meRes.ok) setMe(await meRes.json());
-    if (res.ok) {
-      const d = await res.json();
-      setFences(d.geofences);
+    try {
+      const [meRes, res] = await Promise.all([
+        fetch("/api/me"),
+        fetch("/api/geofences"),
+      ]);
+      if (meRes.ok) setMe(await meRes.json());
+      if (res.ok) {
+        const d = await res.json();
+        setFences(d.geofences);
+      } else {
+        setError(`Geofences laden mislukt (${res.status})`);
+      }
+    } catch {
+      setError("Netwerkfout bij geofences laden");
     }
   }, []);
 
@@ -64,27 +71,22 @@ export default function GeofencesPage() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/geofences", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const r = await apiRequest("/api/geofences", {
+        ...jsonRequest("POST", {
           name: form.name.trim(),
           description: form.description || null,
           color: form.color,
           coordinates: JSON.stringify(coords),
         }),
       });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        setError(data?.error ?? `Fout ${res.status}`);
+      if (!r.ok) {
+        setError(r.error);
         return;
       }
       setShowForm(false);
       setForm({ name: "", description: "", color: "#2563eb" });
       setCoords([]);
       void load();
-    } catch {
-      setError("Netwerkfout");
     } finally {
       setSaving(false);
     }

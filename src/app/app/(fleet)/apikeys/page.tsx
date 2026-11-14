@@ -1,8 +1,9 @@
 "use client";
 
 // API Keys — light theme, mockup-stijl
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorBanner } from "@/components/ui";
+import { apiRequest, jsonRequest } from "@/lib/http";
 
 type ApiKeyRow = {
   id: string;
@@ -23,14 +24,29 @@ export default function ApiKeysPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  // Succes-timers bijhouden: een setTimeout na unmount zou setState op een
+  // niet meer bestaande component aanroepen.
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
+  function flashSuccess(msg: string, ms: number) {
+    setSuccess(msg);
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    successTimerRef.current = setTimeout(() => setSuccess(null), ms);
+  }
 
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/keys");
-      if (res.ok) {
-        const d = await res.json();
-        setKeys(d.keys);
-      }
+      if (!res.ok) throw new Error(`Fout ${res.status}`);
+      const d = await res.json();
+      setKeys(d.keys);
+    } catch {
+      setError("API-keys laden mislukt");
     } finally {
       setLoading(false);
     }
@@ -44,24 +60,19 @@ export default function ApiKeysPage() {
     setCreating(true);
     setError(null);
     try {
-      const res = await fetch("/api/keys", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: label.trim() || "Default" }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        setError(data?.error ?? `Fout ${res.status}`);
+      const r = await apiRequest<{ apiKey: string; label: string }>(
+        "/api/keys",
+        jsonRequest("POST", { label: label.trim() || "Default" })
+      );
+      if (!r.ok) {
+        setError(r.error);
         return;
       }
-      setCreatedKey({ raw: data.apiKey, label: data.label });
+      setCreatedKey({ raw: r.data.apiKey, label: r.data.label });
       setShowCreate(false);
       setLabel("");
-      setSuccess("API-key succesvol aangemaakt!");
-      setTimeout(() => setSuccess(null), 4000);
+      flashSuccess("API-key succesvol aangemaakt!", 4000);
       void load();
-    } catch {
-      setError("Netwerkfout");
     } finally {
       setCreating(false);
     }
@@ -69,15 +80,18 @@ export default function ApiKeysPage() {
 
   async function revokeKey(id: string) {
     if (!confirm("Deze key intrekken? Verzoeken ermee worden geweigerd.")) return;
-    await fetch(`/api/keys/${id}`, { method: "DELETE" });
+    const r = await apiRequest(`/api/keys/${id}`, { method: "DELETE" });
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
     void load();
   }
 
   async function copyKey(raw: string) {
     try {
       await navigator.clipboard.writeText(raw);
-      setSuccess("Gekopieerd!");
-      setTimeout(() => setSuccess(null), 2000);
+      flashSuccess("Gekopieerd!", 2000);
     } catch {}
   }
 

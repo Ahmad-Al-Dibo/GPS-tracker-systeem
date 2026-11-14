@@ -4,6 +4,7 @@
 // Registreren op IMEI, autoriseren met de Connect-knop, koppelen aan voertuig,
 // live verbindingstatus (online/stale/offline) en laatste positie.
 import { useCallback, useEffect, useState } from "react";
+import { apiRequest, jsonRequest } from "@/lib/http";
 
 type Device = {
   id: string;
@@ -121,23 +122,24 @@ export default function DevicesPage() {
   const [showGuide, setShowGuide] = useState(false);
 
   const load = useCallback(async () => {
-    const [dRes, vRes] = await Promise.all([
-      fetch("/api/devices"),
-      fetch("/api/vehicles"),
-    ]);
-    if (dRes.ok) {
+    try {
+      const [dRes, vRes] = await Promise.all([
+        fetch("/api/devices"),
+        fetch("/api/vehicles"),
+      ]);
+      if (!dRes.ok || !vRes.ok) throw new Error("fetch failed");
       const d = await dRes.json();
       setDevices(d.devices);
-    }
-    if (vRes.ok) {
-      const d = await vRes.json();
+      const v = await vRes.json();
       setVehicles(
-        d.vehicles.map((v: { id: string; displayName: string; licensePlate: string | null }) => ({
-          id: v.id,
-          displayName: v.displayName,
-          licensePlate: v.licensePlate,
+        v.vehicles.map((veh: { id: string; displayName: string; licensePlate: string | null }) => ({
+          id: veh.id,
+          displayName: veh.displayName,
+          licensePlate: veh.licensePlate,
         }))
       );
+    } catch {
+      setError("Apparaten laden mislukt");
     }
   }, []);
 
@@ -155,30 +157,23 @@ export default function DevicesPage() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/devices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imei: form.imei.trim(),
-          label: form.label.trim() || null,
-          brand: form.brand.trim() || null,
-          model: form.model.trim() || null,
-          simCardNumber: form.simCardNumber.trim() || null,
-          firmware: form.firmware.trim() || null,
-          protocol: form.protocol,
-          vehicleId: form.vehicleId || null,
-        }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        setError(data?.error ?? `Fout ${res.status}`);
+      const r = await apiRequest("/api/devices", jsonRequest("POST", {
+        imei: form.imei.trim(),
+        label: form.label.trim() || null,
+        brand: form.brand.trim() || null,
+        model: form.model.trim() || null,
+        simCardNumber: form.simCardNumber.trim() || null,
+        firmware: form.firmware.trim() || null,
+        protocol: form.protocol,
+        vehicleId: form.vehicleId || null,
+      }));
+      if (!r.ok) {
+        setError(r.error);
         return;
       }
       setShowForm(false);
       setForm({ imei: "", label: "", brand: "Teltonika", model: "", simCardNumber: "", firmware: "", protocol: "codec8e", vehicleId: "" });
       void load();
-    } catch {
-      setError("Netwerkfout");
     } finally {
       setSaving(false);
     }
