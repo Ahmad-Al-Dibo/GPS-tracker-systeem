@@ -110,6 +110,17 @@ npm run test:jobs
 
 # Locaties, routes, import, geocode-proxy (parser-checks lokaal; API-checks server)
 npm run test:locations
+
+# Kaartpagina-smoke in echte browser (Playwright; server moet draaien)
+npm run test:map
+
+# GPS-pijplijn: dedupe/edge-tests tegen /api/ingest/teltonika (server + .env)
+node scripts/test-dedupe.mjs
+node scripts/test-ingest-edge.mjs
+
+# Teltonika TCP-selftest: start eerst de AVL-server los
+node teltonika/server.mjs        # venster 2
+node teltonika/selftest.mjs      # verwacht ACK 14 op de echte FMC920-chunk
 ```
 
 Andere kwaliteitscontroles:

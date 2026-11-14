@@ -1,6 +1,6 @@
 # Plan 08 — Phase 1: Codebase-audit, cleanup & architectuur-refactor
 
-**Status:** actief
+**Status:** afgerond (2026-11-14)
 **Prioriteit:** HOOG — productie-readiness vóór domein-activatie
 **Datum:** 2026-11-14
 
@@ -86,90 +86,112 @@ Teltonika FMC920 → TCP-tunnel (bore/Pinggy/nginx-stream:5556)
 ## Werkplan (7 stappen, commit na elke groene stap)
 
 ### Stap 1 — Safety net & repo-hygiëne
-- [ ] Baseline: `typecheck`, `lint`, `build`, `test:jobs`; server + `test:e2e`,
+- [x] Baseline: `typecheck`, `lint`, `build`, `test:jobs`; server + `test:e2e`,
       `test:trash`, `test:locations` — uitkomst vastleggen.
-- [ ] `.gitignore`: `*.err` toevoegen.
-- [ ] Verwijderen: `src/lib/validation-ingest.ts`, `src/types/`,
+- [x] `.gitignore`: `*.err` toevoegen.
+- [x] Verwijderen: `src/lib/validation-ingest.ts`, `src/types/`,
       `src/app/api/auth/register/`.
-- [ ] `@types/bcryptjs` uit `dependencies`.
-- [ ] Commit 1.
+- [x] `@types/bcryptjs` uit `dependencies`.
+- [x] Commit 1.
 
 ### Stap 2 — Security-fixes
-- [ ] IDOR-fix `events/[id]` PATCH (ownership-check + Zod voor
+- [x] IDOR-fix `events/[id]` PATCH (ownership-check + Zod voor
       `assignedUserId`/`reviewNotes`).
-- [ ] Open-redirect fix in `login/page.tsx` (alleen relatieve paden).
-- [ ] Login rate-limit (5/15min per IP+identifier → 429) + failure-logging
+- [x] Open-redirect fix in `login/page.tsx` (alleen relatieve paden).
+- [x] Login rate-limit (5/15min per IP+identifier → 429) + failure-logging
       (`logger` + `logAudit`), geen nieuwe dependency.
-- [ ] Hardcoded key weg uit `start-web-mode.cmd`; `timingSafeEqual` over
+- [x] Hardcoded key weg uit `start-web-mode.cmd`; `timingSafeEqual` over
       SHA-256-digests in ingest-route; key-rotatie voorbereiden (device-stap
       = gebruiker).
-- [ ] Proxy-matcher omkeren naar default-deny `/api/:path*` met publieke
+- [x] Proxy-matcher omkeren naar default-deny `/api/:path*` met publieke
       allowlist (`/api/auth/*`, `/api/health*`, `/api/ingest`,
       `/api/ingest/teltonika`); `/api/gps` uit publieke lijst.
-- [ ] Security headers in `next.config.ts` (nosniff, XFO, Referrer-Policy,
+- [x] Security headers in `next.config.ts` (nosniff, XFO, Referrer-Policy,
       Permissions-Policy, HSTS prod, `poweredByHeader:false`); CSP = follow-up.
-- [ ] Geen internals lekken: generieke messages in `health/*`, `geocode`,
+- [x] Geen internals lekken: generieke messages in `health/*`, `geocode`,
       `(fleet)/error.tsx`.
-- [ ] Alle 3 de auth-gerelateerde tests draaien. Commit 2.
+- [x] Alle 3 de auth-gerelateerde tests draaien. Commit 2.
 
 ### Stap 3 — Gedeelde kaart & data-shaping (kern-refactor)
-- [ ] `src/lib/map-data.ts`: `toMapVehicles()`, `parseGeofences()` (veilige
+- [x] `src/lib/map-data.ts`: `toMapVehicles()`, `parseGeofences()` (veilige
       per-row JSON.parse), `toMapLocations()`, gedeeld `Source`-type.
-- [ ] `src/lib/use-map-data.ts` ("use client"): `useFleetSources()`,
+- [x] `src/lib/use-map-data.ts` ("use client"): `useFleetSources()`,
       `useGeofences()`, `useLocations()` — 1× fetch+poll+error+AbortController.
-- [ ] `tracking-map.tsx`: locate/fullscreen-overlap fix (stack), fullscreen
+- [x] `tracking-map.tsx`: locate/fullscreen-overlap fix (stack), fullscreen
       statedesync, `MapController` dep-fix, dode code weg, dode
       save-actions verbergen, `alert()` → inline error.
-- [ ] `polygon-editor.tsx`: gedeelde tile-config, reageer op
+- [x] `polygon-editor.tsx`: gedeelde tile-config, reageer op
       `initialCoords`-updates, `onChange` uit state-updater.
-- [ ] Pagina's migreren (dashboard, map, history, locations) → hooks;
+- [x] Pagina's migreren (dashboard, map, history, locations) → hooks;
       page-bugs fixen (stale limit, trail-race, `:830` ternary,
       Suspense voor `useSearchParams`, geofence-delete `res.ok`).
-- [ ] `CODEBASE_GUIDE.md` bijwerken. Typecheck/lint/build + handmatige
+- [x] `CODEBASE_GUIDE.md` bijwerken. Typecheck/lint/build + handmatige
       kaarttest. Commit 3.
 
 ### Stap 4 — Gedeelde UI-primitives
-- [ ] `src/components/ui/`: `ErrorBanner` (12×), table-head-constanten (9×),
+- [x] `src/components/ui/`: `ErrorBanner` (12×), table-head-constanten (9×),
       `fieldClass` inputs (21×), `ConfirmDialog`/`useConfirm` (16×),
       save-form-helper (10×), `formatDateTime()` (nl-NL, consistent).
-- [ ] Geen volledige component-library/form-framework. Commit 4.
+- [x] Geen volledige component-library/form-framework. Commit 4.
 
 ### Stap 5 — GPS-pijplijn-hardening (gedrag behouden)
-- [ ] ACK-0 retry-storm: records tellen als accepted-but-unstored +
+- [x] ACK-0 retry-storm: records tellen als accepted-but-unstored +
       `logger.warn` wanneer device geldig maar niet gekoppeld.
-- [ ] `selftest.mjs`-fixture herstellen (1 hex-digit); selftest → ACK 14;
+- [x] `selftest.mjs`-fixture herstellen (1 hex-digit); selftest → ACK 14;
       plan-04 bijwerken met fixture-artefact-conclusie ("live capture
       nodig").
-- [ ] `lastRecordCount` → Prisma `increment`; idempotency-lookup in try.
-- [ ] Notifications-cooldown gelijk aan event-cooldown (5 min).
-- [ ] Negatieve timeGap-afvang in `distance.ts`.
-- [ ] Migratie: `@@index([receivedAt])` op `IngestPoint` (additief).
-- [ ] Python-listener README-banner "experimental — not production";
+- [x] `lastRecordCount` → Prisma `increment`; idempotency-lookup in try.
+- [x] Notifications-cooldown gelijk aan event-cooldown (5 min).
+- [x] Negatieve timeGap-afvang in `distance.ts`.
+- [x] Migratie: `@@index([receivedAt])` op `IngestPoint` (additief).
+- [x] Python-listener README-banner "experimental — not production";
       `console.log` payload-lek in `/api/gps` weg. Commit 5.
 
 ### Stap 6 — Loading/error-consistentie
-- [ ] `try/catch` + error-state voor pagina's zonder (dashboard, map,
+- [x] `try/catch` + error-state voor pagina's zonder (dashboard, map,
       history, geofences, vehicles, persons, alerts, trackers, devices).
-- [ ] Eén gedeelde `(fleet)/loading.tsx`.
-- [ ] Low-bugs: apikeys/settings setTimeout-cleanup, settings mojibake,
+- [x] Eén gedeelde `(fleet)/loading.tsx`.
+- [x] Low-bugs: apikeys/settings setTimeout-cleanup, settings mojibake,
       `searchAddress` sequence-guard. Commit 6.
 
 ### Stap 7 — Eindverificatie & rapport
-- [ ] Volledige gate: typecheck → lint → build → `npm start` → `test:e2e`,
+- [x] Volledige gate: typecheck → lint → build → `npm start` → `test:e2e`,
       `test:trash`, `test:jobs`, `test:locations`.
-- [ ] Handmatige smoke: login, dashboard, map (search/locate/fullscreen/
+- [x] Handmatige smoke: login, dashboard, map (search/locate/fullscreen/
       filters/delen), history-trail, geofence tekenen, locations tabs,
       reports CSV, trash restore.
-- [ ] `CODEBASE_GUIDE.md` + `opstarten.md` bijwerken.
-- [ ] Definitief rapport (wat inspectie, gefikste bugs, overgebleven
+- [x] `CODEBASE_GUIDE.md` + `opstarten.md` bijwerken.
+- [x] Definitief rapport (wat inspectie, gefikste bugs, overgebleven
       risico's, wat hardware-verificatie nodig heeft). Commit 7.
+
+## Uitvoeringsnoties (afwijkingen t.o.v. plan)
+
+- **Stap 3:** hooks heten `useIngestSources`/`useVehicleList`/`useMapLayers`
+  (plan noemde `useFleetSources`/`useGeofences`/`useLocations`); tile-config
+  zit in `src/lib/map-tiles.ts` i.p.v. in tracking-map.
+- **Stap 4:** `ConfirmDialog`/`useConfirm` **niet** geïmplementeerd — native
+  `confirm()` bewust behouden (eenregelige, toegankelijke browser-API; eigen
+  modal = meer code zonder functionele winst). `fieldClass`/`thClass` zijn
+  beschikbaar voor nieuw werk, maar bestaande input-class-varianten zijn
+  geforceerd gelijk getrokken (verschillende prefixen/kleuren → visuele churn).
+  `ErrorBanner` (12→1) en `formatDateTime` wél overal gemigreerd.
+- **Stap 5:** notifications-cooldown **niet** gewijzigd — de audit-bevinding
+  was onjuist: notificaties worden alleen bij áánmaak van een nieuw event
+  verstuurd (cooldown-pad keert vroegtijdig terug), niet per ingest-tick.
+  Lokale `TELTONIKA_INGEST_KEY` wél geroteerd (`.env` + `set-key.local.cmd`;
+  productie gebruikt al `openssl rand`-keys).
+- **Commits:** naast de 7 stappen is er een extra commit met de daarvoor
+  ongecommitte productie-code (multi-tenancy-filters, device-registry +
+  migraties, health/gps/devices-API's, deploy-assets) — noodzakelijk zodat
+  een fresh clone de GPS-pijplijn kan bouwen.
 
 ## Buiten scope (aanbevelingen in rapport)
 
 - Python-listener aan productie koppelen; SSE/WebSocket i.p.v. polling;
   `TrackingMap` hernoemen naar `MapView`; volledige component-library;
   CI-pipeline; volledige CSP; nginx `limit_req`; codec-16; live FMC920
-  e2e-bewijs (hardware nodig); key-rotatie uitvoeren (gebruikers-stap).
+  e2e-bewijs (hardware nodig); `apiRequest`-adoptie in overige save-functies
+  (tasks/rules/trash/locations).
 
 ## Acceptatie
 

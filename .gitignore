@@ -44,6 +44,9 @@ yarn-error.log*
 # lokale secrets/scripts (nooit in git)
 *.local.cmd
 
+# Vendor-tools (downloadbaar, groot) — configs/prints van hardware wél
+HARDWARE/*.zip
+
 # Python-listener: venv + runtime-data + bytecode (bron wél versiebeheerd)
 src/PYTHON-listener/gps_records.csv
 src/PYTHON-listener/http_requests.jsonl
