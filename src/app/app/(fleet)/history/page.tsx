@@ -5,6 +5,7 @@ import { useCallback, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { toMapVehicles } from "@/lib/map-data";
 import { useIngestSources } from "@/lib/use-map-data";
+import { formatDateTime } from "@/lib/format";
 
 const TrackingMap = dynamic(() => import("@/components/tracking-map"), {
   ssr: false,
@@ -136,8 +137,8 @@ export default function HistoryPage() {
             <div className="rounded-lg bg-white p-3 text-sm">
               <p className="font-medium">{trail.length} punten geladen</p>
               <p className="text-xs text-slate-400">
-                Van {new Date(trail[0].sampledAt).toLocaleString()} tot{" "}
-                {new Date(trail[trail.length - 1].sampledAt).toLocaleString()}
+                Van {formatDateTime(trail[0].sampledAt)} tot{" "}
+                {formatDateTime(trail[trail.length - 1].sampledAt)}
               </p>
             </div>
           )}

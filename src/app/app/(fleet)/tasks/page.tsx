@@ -2,6 +2,7 @@
 
 // Taken-pagina — toewijzen aan persoon en/of voertuig
 import { useCallback, useEffect, useState } from "react";
+import { ErrorBanner } from "@/components/ui";
 
 type Task = {
   id: string;
@@ -187,9 +188,7 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {error && (
-        <p className="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p>
-      )}
+      <ErrorBanner>{error}</ErrorBanner>
 
       {/* Nieuw taak-formulier */}
       {showForm && (

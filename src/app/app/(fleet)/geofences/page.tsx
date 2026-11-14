@@ -3,6 +3,7 @@
 // Geofences-pagina — polygon tekenen op de kaart
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { ErrorBanner } from "@/components/ui";
 
 const PolygonEditor = dynamic(() => import("@/components/polygon-editor"), {
   ssr: false,
@@ -133,9 +134,7 @@ export default function GeofencesPage() {
         )}
       </div>
 
-      {error && (
-        <p className="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p>
-      )}
+      <ErrorBanner>{error}</ErrorBanner>
 
       {/* Nieuw geofence formulier */}
       {showForm && (

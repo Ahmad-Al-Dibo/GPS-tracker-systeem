@@ -2,6 +2,7 @@
 
 // Regels-pagina: iedereen mag bekijken; alleen admin maakt/bewerkt/verwijdert
 import { useCallback, useEffect, useState } from "react";
+import { ErrorBanner } from "@/components/ui";
 
 type RuleCondition = {
   field: string;
@@ -217,11 +218,7 @@ export default function RulesPage() {
         )}
       </div>
 
-      {error && (
-        <p className="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">
-          {error}
-        </p>
-      )}
+      <ErrorBanner>{error}</ErrorBanner>
 
       {showForm && (
         <div className="mb-6 rounded-xl border border-slate-300 bg-white p-5">

@@ -9,6 +9,8 @@ import MapFilterControl from "@/components/map-filters";
 import { useMapFilters, applyLocationFilters } from "@/lib/map-filters";
 import { toMapVehicles } from "@/lib/map-data";
 import { useVehicleList, useMapLayers } from "@/lib/use-map-data";
+import { ErrorBanner } from "@/components/ui";
+import { formatDateTime } from "@/lib/format";
 
 const TrackingMap = dynamic(() => import("@/components/tracking-map"), {
   ssr: false,
@@ -117,11 +119,9 @@ export default function OverviewPage() {
         <p className="text-sm text-slate-500">Live voertuiglocaties</p>
       </div>
 
-      {error && (
-        <p className="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">
-          {error} — getoonde gegevens zijn mogelijk verouderd.
-        </p>
-      )}
+      <ErrorBanner>
+        {error} — getoonde gegevens zijn mogelijk verouderd.
+      </ErrorBanner>
 
       {/* Stats */}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:mb-6 lg:grid-cols-4 lg:gap-4">
@@ -218,7 +218,7 @@ export default function OverviewPage() {
                       </p>
                       <p className="truncate text-xs text-slate-500">{e.ruleName}</p>
                       <p className="text-[10px] text-slate-400">
-                        {new Date(e.startTime).toLocaleString()}
+                        {formatDateTime(e.startTime)}
                       </p>
                     </div>
                   </li>

@@ -87,7 +87,8 @@ GPS-tracking-system/
 │   │            settings,trash}/page.tsx
 │   ├── components/              # Gedeelde client-components
 │   │   ├── tracking-map.tsx     # Kaart (zoekblocs, locate, markers, fullscreen)
-│   │   └── polygon-editor.tsx   # Geofence-tekenaar
+│   │   ├── polygon-editor.tsx   # Geofence-tekenaar
+│   │   └── ui.tsx               # ErrorBanner + veld/tabel/knop-class-constanten
 │   └── lib/                     # Server-/businesslogic
 │       ├── db.ts                # Prisma-singleton
 │       ├── auth-session.ts      # DB-sessies + cookie
@@ -97,6 +98,8 @@ GPS-tracking-system/
 │       ├── map-data.ts          # Gedeelde kaart-shaping (toMapVehicles, parseGeofences, …)
 │       ├── map-tiles.ts         # Gedeelde tileconfig (TILE_STYLES, TileStyle)
 │       ├── use-map-data.ts      # Polling-hooks (useIngestSources, useMapLayers, …)
+│       ├── http.ts              # apiRequest/jsonRequest (fetch+foutafhandeling)
+│       ├── format.ts            # formatDateTime/formatTime/formatDate (nl-NL)
 │       ├── audit.ts             # logAudit()
 │       ├── distance.ts          # Haversine + delta-berekening
 │       ├── config.ts            # Constants (OFFLINE_AFTER_MS, …)
@@ -170,6 +173,9 @@ GPS-tracking-system/
 | [src/lib/map-data.ts](src/lib/map-data.ts) | Pure kaart-shaping (geen fetch/React) | `toMapVehicles()`, `parseGeofences()` (veilige per-row JSON.parse), `toMapLocations()`, type `VehicleSourceRow` | Nieuwe bron-/laagvormen |
 | [src/lib/use-map-data.ts](src/lib/use-map-data.ts) | Gedeelde polling-hooks (AbortController + seq-guard) | `useIngestSources()`, `useVehicleList()`, `useMapLayers()` | Nieuwe gegevens-poll op kaartpagina's |
 | [src/lib/map-tiles.ts](src/lib/map-tiles.ts) | Tileconfig gedeeld door TrackingMap + PolygonEditor | `TILE_STYLES`, `TileStyle` | Tile-provider wijzigen |
+| [src/components/ui.tsx](src/components/ui.tsx) | Gedeelde UI-primitieven | `ErrorBanner` (12 kopieën geëlimineerd), `fieldClass`, `thClass`, `tdClass`, `primaryButtonClass`, `SaveButton` | Nieuwe formulieren/lijsten |
+| [src/lib/http.ts](src/lib/http.ts) | Fetch+foutafhandeling voor pagina's | `apiRequest()` (nooit throw), `jsonRequest()` | Nieuwe save-/mutatie-logica |
+| [src/lib/format.ts](src/lib/format.ts) | Datum/tijd nl-NL consistent | `formatDateTime()`, `formatTime()`, `formatDate()` | Weergave van datums in UI |
 | [src/lib/distance.ts](src/lib/distance.ts) | Haversine + stilstand/sprong-detectie | `haversineDistance()`, `calculateDistanceDelta()`, `calculateSpeed()`, `MIN_MOVEMENT_M`, `MAX_GAP_M`, `MAX_TIME_GAP_S` | Afstands-/snelheidsregels |
 | [src/lib/audit.ts](src/lib/audit.ts) | Audit-logregels | `logAudit(actorUserId, action, targetType, targetId, detail)` | Nieuwe audit-acties |
 | [src/lib/jobs/schedule.ts](src/lib/jobs/schedule.ts) | Planning-slots (2×/dag 09:00/21:00, TZ uit Settings, lookback 7d) | `DEFAULT_DEADLINE_SCHEDULE`, `LOOKBACK_DAYS`, `getDueSlots()`, `zonedToInstant()`, `localDateKey()` | Andere planning |

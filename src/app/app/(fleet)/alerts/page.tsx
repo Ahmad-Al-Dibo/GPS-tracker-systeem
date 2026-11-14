@@ -2,6 +2,7 @@
 
 // Alerts & Events-pagina
 import { useCallback, useEffect, useState } from "react";
+import { formatDateTime } from "@/lib/format";
 
 type EventRow = {
   id: string;
@@ -128,7 +129,7 @@ export default function AlertsPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-400">
-                  {new Date(e.startTime).toLocaleString()}
+                        {formatDateTime(e.startTime)}
                 </td>
                 <td className="px-4 py-3">
                   <button
@@ -170,11 +171,11 @@ export default function AlertsPage() {
               </div>
               <div>
                 <p className="text-xs text-slate-400">Start</p>
-                <p>{new Date(selected.startTime).toLocaleString()}</p>
+                <p>{formatDateTime(selected.startTime)}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-400">Einde</p>
-                <p>{selected.endTime ? new Date(selected.endTime).toLocaleString() : "—"}</p>
+                <p>{formatDateTime(selected.endTime)}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-400">Gemeten</p>

@@ -3,6 +3,7 @@
 // Rapporten-pagina — professioneel exportcentrum
 // Datum-presets, rapportkeuze met statistieken, datavoorbeeld en CSV-export.
 import { useCallback, useEffect, useState } from "react";
+import { ErrorBanner } from "@/components/ui";
 
 type ReportType = {
   type: string;
@@ -227,9 +228,7 @@ export default function ReportsPage() {
         ))}
       </div>
 
-      {error && (
-        <p className="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p>
-      )}
+      <ErrorBanner>{error}</ErrorBanner>
 
       {/* Statistieken + actie */}
       {preview && (

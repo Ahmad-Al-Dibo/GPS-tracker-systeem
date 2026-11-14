@@ -2,6 +2,7 @@
 
 // API Keys — light theme, mockup-stijl
 import { useCallback, useEffect, useState } from "react";
+import { ErrorBanner } from "@/components/ui";
 
 type ApiKeyRow = {
   id: string;
@@ -94,9 +95,7 @@ export default function ApiKeysPage() {
           ✓ {success}
         </p>
       )}
-      {error && (
-        <p className="mb-4 rounded-lg bg-red-50 px-4 py-2.5 text-sm text-red-600">{error}</p>
-      )}
+      <ErrorBanner>{error}</ErrorBanner>
 
       <button
         onClick={() => setShowCreate(true)}

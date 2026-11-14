@@ -3,6 +3,7 @@
 // Prullenbak — verwijderde personen en voertuigen (soft delete)
 // Tabs, gesorteerd op verwijderdatum (nieuwste eerst), herstellen + definitief verwijderen.
 import { useCallback, useEffect, useState } from "react";
+import { ErrorBanner } from "@/components/ui";
 
 type Dependencies = {
   links?: number;
@@ -156,9 +157,7 @@ export default function TrashPage() {
         {tabButton("vehicles", "Voertuigen")}
       </div>
 
-      {error && (
-        <p className="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p>
-      )}
+      <ErrorBanner>{error}</ErrorBanner>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">

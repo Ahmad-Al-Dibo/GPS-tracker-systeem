@@ -11,6 +11,7 @@ import {
   type AvailableLayers,
 } from "@/lib/map-filters";
 import { parseGeofences } from "@/lib/map-data";
+import { ErrorBanner } from "@/components/ui";
 import type {
   MapZone,
   MapLocation,
@@ -829,9 +830,7 @@ Tijdelijke locatie,"Stationsstraat 12, Enschede",temporary,2026-12-25T18:00:00,"
         ))}
       </div>
 
-      {error && (
-        <p className="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p>
-      )}
+      <ErrorBanner>{error}</ErrorBanner>
 
       {/* Kaart met filters */}
       <div className="relative mb-6 h-[380px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:h-[440px]">
