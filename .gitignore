@@ -62,6 +62,8 @@ __pycache__/
 local.properties
 *.apk
 *.aab
+# ... maar de gepubliceerde tracker-app wél serveren vanuit de site
+!public/downloads/*.apk
 
 # IDE
 .idea/
