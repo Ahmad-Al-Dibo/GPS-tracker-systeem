@@ -7,7 +7,6 @@ import { prisma } from "@/lib/db";
 import { requireAuth } from "@/lib/api-helpers";
 import { z } from "zod";
 import { sourceTrackingState, liveSpeedKmh, deviceConnectionState } from "@/lib/tracking-state";
-import { trackerMetadataSchema } from "@/lib/tracker-identity";
 
 const trackerCreateSchema = z.object({
   name: z.string().trim().min(1).max(80),
