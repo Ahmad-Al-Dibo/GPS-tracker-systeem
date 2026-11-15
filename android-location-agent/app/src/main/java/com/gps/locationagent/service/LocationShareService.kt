@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.BatteryManager
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
@@ -24,7 +25,9 @@ import com.gps.locationagent.LocationAgentApp
 import com.gps.locationagent.data.LogEntry
 import com.gps.locationagent.ui.MainActivity
 import com.gps.locationagent.util.IntervalBounds
+import com.gps.locationagent.util.PlatformClient
 import com.gps.locationagent.util.SettingsStore
+import com.gps.locationagent.util.TrackerState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -67,6 +70,8 @@ class LocationShareService : Service() {
     private var lastLon: Double? = null
     private var lastAccuracy: Float? = null
     private var lastSpeed: Float? = null
+    private var lastAltitude: Double? = null
+    private var lastBearing: Float? = null
     private var lastFixAt: Long = 0L
 
     override fun onCreate() {
@@ -139,7 +144,17 @@ class LocationShareService : Service() {
             lastLon = loc.longitude
             lastAccuracy = loc.accuracy
             lastSpeed = if (loc.hasSpeed()) loc.speed else null
+            lastAltitude = if (loc.hasAltitude()) loc.altitude else null
+            lastBearing = if (loc.hasBearing()) loc.bearing else null
             lastFixAt = System.currentTimeMillis()
+            // Spiegel naar gedeelde UI-status (Tracker-tab toont dit live).
+            TrackerState.lastLat = lastLat
+            TrackerState.lastLon = lastLon
+            TrackerState.lastAccuracy = lastAccuracy
+            TrackerState.lastSpeed = lastSpeed
+            TrackerState.lastAltitude = lastAltitude
+            TrackerState.lastBearing = lastBearing
+            TrackerState.lastFixAt = lastFixAt
         }
     }
 
@@ -158,9 +173,15 @@ class LocationShareService : Service() {
     }
 
     private suspend fun sendToAllApis() {
+        // ── Platform-tracker (Phase 2): eigen identiteit + offline-wachtrij ──
+        sendPlatform()
+
         val apis = (application as LocationAgentApp).database.apiConfigDao().getEnabled()
         if (apis.isEmpty()) {
-            log("WARN", "service", "Geen ingeschakelde API-configuratie")
+            // Geen generic APIs is normaal zolang de platform-tracker actief is.
+            if (settings.currentTrackerKey().isBlank()) {
+                log("WARN", "service", "Geen ingeschakelde API-configuratie")
+            }
             return
         }
 
@@ -186,6 +207,127 @@ class LocationShareService : Service() {
             }.toString()
             sendOne(api.name, api.url, api.httpMethod, api.apiKey, api.headersRaw, api.bodyTemplate, payload)
         }
+    }
+
+    /**
+     * Platform-zending (Phase 2): identiteit = trackerKey (geen naam).
+     * Eerst de offline-wachtrij flushen (oudste eerst), dan het huidige punt.
+     * Metadata wordt alleen meegestuurd als de app iets gewijzigd heeft.
+     */
+    private suspend fun sendPlatform() {
+        val trackerKey = settings.currentTrackerKey()
+        if (trackerKey.isBlank()) return
+        val serverUrl = settings.currentServerUrl()
+        if (serverUrl.isBlank()) {
+            TrackerState.lastSendOk = false
+            TrackerState.lastError = "Server-URL ontbreekt (tab Tracker)"
+            return
+        }
+        val installId = settings.currentInstallId()
+
+        // 1) Offline-wachtrij leegmaken vóór nieuwe punten.
+        flushPending(serverUrl, trackerKey)
+
+        // 2) Huidige fix versturen.
+        val lat = lastLat ?: return // nog geen GPS-fix
+        val lon = lastLon ?: return
+        val deviceName = settings.currentTrackerName()
+        val metaJson = settings.currentTrackerMetadata()
+        val hash = PlatformClient.metadataHash(deviceName, metaJson)
+        val metadata = if (hash != settings.lastMetadataHash()) {
+            buildMetadata(deviceName, metaJson)
+        } else null
+
+        val payload = PlatformClient.gpsPayload(
+            installId = installId,
+            lat = lat,
+            lon = lon,
+            timestampMs = lastFixAt,
+            speedMps = lastSpeed,
+            altitude = lastAltitude,
+            heading = lastBearing,
+            accuracyMeters = lastAccuracy,
+            batteryLevel = batteryLevel(),
+            metadata = metadata
+        )
+        val res = PlatformClient.sendGps(serverUrl, trackerKey, payload)
+        TrackerState.lastSendOk = res.ok
+        TrackerState.lastSendAt = System.currentTimeMillis()
+        TrackerState.lastError = res.error
+        TrackerState.batteryLevel = batteryLevel()
+
+        when {
+            res.ok -> {
+                if (metadata != null) settings.setLastMetadataHash(hash)
+                log("HTTP", "platform", "GPS-punt verzonden (${res.httpStatus})")
+            }
+            res.httpStatus == null || res.httpStatus >= 500 || res.httpStatus == 429 -> {
+                // Bufferbaar: netwerkfout/5xx/429 → wachtrij voor herstel na reconnect.
+                queuePoint(payload.toString())
+                log("ERROR", "platform", "Versturen mislukt, gebufferd: ${res.error}")
+            }
+            else -> {
+                // Permanent (401/403/400): niet bufferen — wel melden.
+                log("ERROR", "platform", "Geweigerd door server: ${res.error}")
+            }
+        }
+    }
+
+    /** Bouwt het metadata-object voor het platform-contract (bekende velden). */
+    private fun buildMetadata(deviceName: String, metaJson: String): JSONObject? {
+        val out = JSONObject()
+        if (deviceName.isNotBlank()) out.put("device_name", deviceName)
+        PlatformClient.parseMetadata(metaJson)?.let { meta ->
+            for (key in meta.keys()) {
+                if (key != "device_name") out.put(key, meta.get(key))
+            }
+        }
+        return if (out.length() == 0) null else out
+    }
+
+    private suspend fun queuePoint(payload: String) {
+        val db = (application as LocationAgentApp).database
+        db.pendingPointDao().insert(com.gps.locationagent.data.PendingPoint(payload = payload))
+        db.pendingPointDao().trim(KEEP_PENDING)
+        TrackerState.pendingCount = db.pendingPointDao().count()
+    }
+
+    private suspend fun flushPending(serverUrl: String, trackerKey: String) {
+        val dao = (application as LocationAgentApp).database.pendingPointDao()
+        TrackerState.pendingCount = dao.count()
+        val batch = dao.oldest(FLUSH_BATCH)
+        if (batch.isEmpty()) return
+        val doneIds = mutableListOf<Long>()
+        for (point in batch) {
+            val res = PlatformClient.sendGps(serverUrl, trackerKey, JSONObject(point.payload))
+            if (res.ok) {
+                doneIds.add(point.id)
+                TrackerState.lastSendOk = true
+                TrackerState.lastSendAt = System.currentTimeMillis()
+                continue
+            }
+            TrackerState.lastError = res.error
+            // 401/403 = trackerKey ongeldig/ingetrokken → alles zou blijven
+            // falen; stop met flushen. Overige fouten: volgende tick opnieuw.
+            if (res.httpStatus == 401 || res.httpStatus == 403) break
+            if (res.httpStatus != null && res.httpStatus < 500 && res.httpStatus != 429) {
+                // Permanent afgewezen (bijv. 400): queue niet blokkeren.
+                doneIds.add(point.id)
+                continue
+            }
+            break
+        }
+        if (doneIds.isNotEmpty()) dao.deleteByIds(doneIds)
+        TrackerState.pendingCount = dao.count()
+        if (doneIds.isNotEmpty()) {
+            log("HTTP", "platform", "${doneIds.size} gebufferde punten gesynchroniseerd")
+        }
+    }
+
+    private fun batteryLevel(): Int? {
+        val bm = getSystemService(BatteryManager::class.java)
+        return bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            ?.takeIf { it in 0..100 }
     }
 
     private suspend fun sendOne(
@@ -292,5 +434,9 @@ class LocationShareService : Service() {
         const val ACTION_STOP = "com.gps.locationagent.STOP"
         private const val CHANNEL_ID = "location_share"
         private const val NOTIF_ID = 1001
+        /** Max gebufferde offline-punten (oudste vallen af). */
+        private const val KEEP_PENDING = 500
+        /** Max punten per flush-tick. */
+        private const val FLUSH_BATCH = 25
     }
 }

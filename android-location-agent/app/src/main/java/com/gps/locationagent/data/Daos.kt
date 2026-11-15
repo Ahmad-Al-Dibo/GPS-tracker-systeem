@@ -38,3 +38,23 @@ interface LogDao {
     @Query("DELETE FROM log_entries")
     suspend fun clear()
 }
+
+@Dao
+interface PendingPointDao {
+    @Insert
+    suspend fun insert(point: PendingPoint)
+
+    /** Oudste punten eerst — beperkt aantal per flush-tick. */
+    @Query("SELECT * FROM pending_points ORDER BY id ASC LIMIT :limit")
+    suspend fun oldest(limit: Int): List<PendingPoint>
+
+    @Query("DELETE FROM pending_points WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+
+    @Query("SELECT COUNT(*) FROM pending_points")
+    suspend fun count(): Int
+
+    /** Afval-veiligheid: queue nooit onbegrensd laten groeien. */
+    @Query("DELETE FROM pending_points WHERE id NOT IN (SELECT id FROM pending_points ORDER BY id DESC LIMIT :keep)")
+    suspend fun trim(keep: Int)
+}

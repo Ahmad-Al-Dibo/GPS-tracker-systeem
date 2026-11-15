@@ -37,6 +37,7 @@ import com.gps.locationagent.data.LogEntry
 import com.gps.locationagent.service.LocationShareService
 import com.gps.locationagent.util.IntervalBounds
 import com.gps.locationagent.util.SettingsStore
+import com.gps.locationagent.util.TrackerState
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -46,6 +47,15 @@ class MainActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { }
+
+    // Achtergrond-locatie vraagt Android 10+ los aan (apart dialog).
+    private val bgLocationLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) {
+            android.util.Log.w("LocationAgent", "ACCESS_BACKGROUND_LOCATION geweigerd")
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,6 +84,15 @@ class MainActivity : ComponentActivity() {
             permissionLauncher.launch(missing.toTypedArray())
         }
     }
+
+    /** Achtergrond-toegang apart aanvragen (mag niet in dezelfde batch). */
+    fun requestBackgroundLocation() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED
+        ) {
+            bgLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
+    }
 }
 
 // ---------- ViewModel ----------
@@ -86,6 +105,83 @@ class AgentViewModel(app: LocationAgentApp) : ViewModel() {
     val settings = SettingsStore(app)
 
     private val db = app.database
+
+    // ── Tracker-tab (Phase 2) ──
+    val trackerName = settings.trackerName
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+    val trackerMetadata = settings.trackerMetadata
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "{}")
+    val trackerKey = settings.trackerKey
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+    val trackerId = settings.trackerId
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+    val verification = settings.verificationStatus
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+    val platformServerUrl = settings.serverUrl
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+    val platformApiKey = settings.apiKey
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+
+    var installId by mutableStateOf("")
+        private set
+    var enrollBusy by mutableStateOf(false)
+        private set
+    var enrollMessage by mutableStateOf<String?>(null)
+        private set
+    var configSaved by mutableStateOf(false)
+        private set
+
+    init {
+        viewModelScope.launch {
+            installId = settings.ensureInstallId()
+        }
+    }
+
+    /** Naam + metadata persisten; hash resetten zodat de volgende GPS-zending dit meestuurt. */
+    fun saveTrackerConfig(name: String, metadataJson: String) = viewModelScope.launch {
+        settings.setTrackerName(name)
+        settings.setTrackerMetadata(metadataJson)
+        settings.setLastMetadataHash(null)
+        configSaved = true
+    }
+
+    fun enroll(serverUrl: String, apiKey: String, name: String, metadataJson: String) =
+        viewModelScope.launch {
+            enrollBusy = true
+            enrollMessage = null
+            try {
+                val id = settings.ensureInstallId()
+                val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.gps.locationagent.util.PlatformClient.enroll(
+                        serverUrl = serverUrl,
+                        apiKey = apiKey,
+                        installId = id,
+                        deviceName = name.trim().ifBlank { null },
+                        metadataJson = metadataJson
+                    )
+                }
+                if (result.ok && result.trackerKey != null) {
+                    settings.setEnrollment(
+                        result.trackerKey,
+                        result.trackerId ?: "",
+                        result.verificationStatus ?: "unverified"
+                    )
+                    settings.setLastMetadataHash(null)
+                    enrollMessage =
+                        "Geregistreerd ✓ — tracker wacht op verificatie door een beheerder."
+                } else {
+                    enrollMessage = result.error ?: "Registratie mislukt"
+                }
+            } catch (e: Exception) {
+                enrollMessage = "Fout: ${e.message}"
+            } finally {
+                enrollBusy = false
+            }
+        }
+
+    fun clearEnrollMessage() {
+        enrollMessage = null
+    }
 
     fun saveApi(config: ApiConfig) = viewModelScope.launch {
         try {
@@ -143,6 +239,7 @@ class AgentViewModelFactory(private val app: LocationAgentApp) : ViewModelProvid
 // ---------- UI ----------
 
 sealed class Tab(val label: String) {
+    data object Tracker : Tab("Tracker")
     data object Apis : Tab("API's")
     data object Status : Tab("Status")
     data object Terminal : Tab("Terminal")
@@ -153,19 +250,34 @@ fun AgentApp() {
     val context = LocalContext.current
     val app = context.applicationContext as LocationAgentApp
     val vm: AgentViewModel = viewModel(factory = AgentViewModelFactory(app))
-    var tab by remember { mutableStateOf<Tab>(Tab.Apis) }
+    var tab by remember { mutableStateOf<Tab>(Tab.Tracker) }
     var editing by remember { mutableStateOf<ApiConfig?>(null) }
     val sharing by vm.settings.sharingEnabled.collectAsState(initial = false)
     val interval by vm.settings.intervalSeconds.collectAsState(initial = 15L)
     val apis by vm.apis.collectAsState()
     val logs by vm.logs.collectAsState()
 
+    fun toggleSharing(enabled: Boolean) {
+        vm.setSharing(enabled)
+        if (enabled) {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, LocationShareService::class.java)
+            )
+        } else {
+            context.startService(
+                Intent(context, LocationShareService::class.java)
+                    .setAction(LocationShareService.ACTION_STOP)
+            )
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         // Tabs
         TabRow(selectedTabIndex = when (tab) {
-            Tab.Apis -> 0; Tab.Status -> 1; Tab.Terminal -> 2
+            Tab.Tracker -> 0; Tab.Apis -> 1; Tab.Status -> 2; Tab.Terminal -> 3
         }) {
-            listOf(Tab.Apis, Tab.Status, Tab.Terminal).forEach { t ->
+            listOf(Tab.Tracker, Tab.Apis, Tab.Status, Tab.Terminal).forEach { t ->
                 Tab(
                     selected = tab == t,
                     onClick = { tab = t },
@@ -175,6 +287,14 @@ fun AgentApp() {
         }
 
         when (tab) {
+            Tab.Tracker -> TrackerScreen(
+                vm = vm,
+                sharing = sharing,
+                onToggleSharing = ::toggleSharing,
+                onRequestBackground = {
+                    (context as? MainActivity)?.requestBackgroundLocation()
+                }
+            )
             Tab.Apis -> ApisScreen(
                 apis = apis,
                 onAdd = { editing = ApiConfig(name = "", url = "https://") },
@@ -185,20 +305,7 @@ fun AgentApp() {
             Tab.Status -> StatusScreen(
                 sharing = sharing,
                 intervalSeconds = interval,
-                onToggleSharing = { enabled ->
-                    vm.setSharing(enabled)
-                    if (enabled) {
-                        ContextCompat.startForegroundService(
-                            context,
-                            Intent(context, LocationShareService::class.java)
-                        )
-                    } else {
-                        context.startService(
-                            Intent(context, LocationShareService::class.java)
-                                .setAction(LocationShareService.ACTION_STOP)
-                        )
-                    }
-                },
+                onToggleSharing = ::toggleSharing,
                 onIntervalChange = { vm.setInterval(it) }
             )
             Tab.Terminal -> TerminalScreen(
@@ -218,6 +325,340 @@ fun AgentApp() {
             onDismiss = { editing = null }
         )
     }
+}
+
+// ---------- Tracker-tab (Phase 2): identiteit, metadata, status ----------
+
+@Composable
+fun TrackerScreen(
+    vm: AgentViewModel,
+    sharing: Boolean,
+    onToggleSharing: (Boolean) -> Unit,
+    onRequestBackground: () -> Unit
+) {
+    val context = LocalContext.current
+    val trackerKey by vm.trackerKey.collectAsState()
+    val trackerId by vm.trackerId.collectAsState()
+    val verification by vm.verification.collectAsState()
+    val savedName by vm.trackerName.collectAsState()
+    val savedMetadata by vm.trackerMetadata.collectAsState()
+    val serverUrl by vm.platformServerUrl.collectAsState()
+    val apiKey by vm.platformApiKey.collectAsState()
+
+    var name by remember(savedName) { mutableStateOf(savedName) }
+    var metaFields by remember(savedMetadata) { mutableStateOf(parseMetaFields(savedMetadata)) }
+    var enrollUrl by remember(serverUrl) { mutableStateOf(serverUrl) }
+    var enrollKey by remember(apiKey) { mutableStateOf(apiKey) }
+    var savedFlash by remember { mutableStateOf(false) }
+
+    // Live status (1× per seconde verversen vanuit de gedeelde TrackerState).
+    var tick by remember { mutableStateOf(0L) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1000)
+            tick = System.currentTimeMillis()
+        }
+    }
+
+    val hasFine = ContextCompat.checkSelfPermission(
+        context, Manifest.permission.ACCESS_FINE_LOCATION
+    ) == PackageManager.PERMISSION_GRANTED
+    val hasBackground = ContextCompat.checkSelfPermission(
+        context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+    ) == PackageManager.PERMISSION_GRANTED
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // ── Registratiestatus ──
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Tracker", style = MaterialTheme.typography.titleMedium)
+                if (trackerKey.isBlank()) {
+                    Text(
+                        "○ Niet geregistreerd — vul server-URL + API-key in en druk op Registreren.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                } else {
+                    Text(
+                        "● Geregistreerd ✓",
+                        color = Color(0xFF4CAF50),
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        "Status: ${if (verification == "verified") "Geverifieerd" else if (verification == "revoked") "Ingetrokken" else "Wacht op verificatie"}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (trackerId.isNotBlank()) {
+                        Text(
+                            "Tracker-ID: ${trackerId.take(8)}…",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Text(
+                    "Install-ID: ${vm.installId.take(13)}…",
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "Deze ID is permanent (overleefde app-herstarts) en is je identiteit — " +
+                        "niet je naam. Deel de API-key nooit publiek.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // ── Live tracking-status ──
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    if (sharing) "● Tracking ACTIEF" else "○ Tracking gestopt",
+                    color = if (sharing) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.titleSmall
+                )
+                val lat = TrackerState.lastLat
+                val lon = TrackerState.lastLon
+                Text(
+                    if (lat != null && lon != null)
+                        "GPS: ${"%.5f".format(lat)}, ${"%.5f".format(lon)}" +
+                            (TrackerState.lastAccuracy?.let { "  ±${it.toInt()} m" } ?: "")
+                    else "GPS: wachten op fix…",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    buildString {
+                        TrackerState.lastSpeed?.let { append(" · ${"%.1f".format(it * 3.6)} km/u") }
+                        TrackerState.lastAltitude?.let { append(" · ${it.toInt()} m") }
+                        TrackerState.batteryLevel?.let { append(" · 🔋${it}%") }
+                    }.ifBlank { "—" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                val lastOk = TrackerState.lastSendOk
+                val pendingSuffix =
+                    if (TrackerState.pendingCount > 0) " · ${TrackerState.pendingCount} gebufferd" else ""
+                Text(
+                    when {
+                        TrackerState.lastSendAt == 0L -> "Nog niets naar het platform verzonden"
+                        lastOk == true -> "Laatste verzending: ${ts(TrackerState.lastSendAt)} ✓$pendingSuffix"
+                        else -> "Laatste verzending mislukt (${ts(TrackerState.lastSendAt)})$pendingSuffix"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (lastOk == false) Color(0xFFFFB74D) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TrackerState.lastError?.let {
+                    Text("⚠ $it", fontSize = 11.sp, color = Color(0xFFFFB74D))
+                }
+                Button(
+                    onClick = { onToggleSharing(!sharing) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (sharing) Color(0xFFC62828) else Color(0xFF2E7D32)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (sharing) "STOP tracking" else "START tracking")
+                }
+                if (!hasFine) {
+                    Text(
+                        "⚠ Locatietoegang geweigerd — sta locatie toe in de Android-instellingen.",
+                        fontSize = 11.sp,
+                        color = Color(0xFFEF5350)
+                    )
+                }
+                if (hasFine && !hasBackground) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Achtergrond-tracking beperkt door Android.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedButton(onClick = onRequestBackground) {
+                            Text("Toestaan", fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Naam + metadata ──
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Naam & metadata", style = MaterialTheme.typography.titleSmall)
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; savedFlash = false },
+                    label = { Text("Tracker-naam (bijv. Company Van 01)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                KNOWN_META_FIELDS.forEach { (key, label) ->
+                    OutlinedTextField(
+                        value = metaFields.values[key] ?: "",
+                        onValueChange = {
+                            metaFields = metaFields.withValue(key, it)
+                            savedFlash = false
+                        },
+                        label = { Text(label) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                if (metaFields.custom.isNotEmpty()) {
+                    Text("Eigen velden", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                metaFields.custom.forEachIndexed { i, row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = row.first,
+                            onValueChange = {
+                                metaFields = metaFields.withCustom(i, it, row.second)
+                                savedFlash = false
+                            },
+                            label = { Text("Sleutel") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = row.second,
+                            onValueChange = {
+                                metaFields = metaFields.withCustom(i, row.first, it)
+                                savedFlash = false
+                            },
+                            label = { Text("Waarde") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1.4f)
+                        )
+                        TextButton(onClick = {
+                            metaFields = metaFields.withCustomRemoved(i)
+                            savedFlash = false
+                        }) { Text("✕") }
+                    }
+                }
+                OutlinedButton(onClick = {
+                    metaFields = metaFields.withCustomAdded("" to "")
+                    savedFlash = false
+                }) { Text("+ Eigen veld") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        vm.saveTrackerConfig(name, metaFields.toJson())
+                        savedFlash = true
+                    }) { Text("Opslaan & syncen") }
+                    if (savedFlash) {
+                        Text(
+                            "Opgeslagen — wijzigingen gaan mee met de volgende verzending.",
+                            fontSize = 11.sp,
+                            color = Color(0xFF4CAF50),
+                            modifier = Modifier.align(Alignment.CenterVertically)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Registratie / provisioning ──
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Registratie bij het platform", style = MaterialTheme.typography.titleSmall)
+                OutlinedTextField(
+                    value = enrollUrl,
+                    onValueChange = { enrollUrl = it; vm.clearEnrollMessage() },
+                    label = { Text("Server-URL (https://…)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = enrollKey,
+                    onValueChange = { enrollKey = it; vm.clearEnrollMessage() },
+                    label = { Text("API-key (gpta_… van het platform)") },
+                    singleLine = true,
+                    supportingText = { Text("Dashboard → API Keys. Alleen voor registratie.") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = {
+                        vm.saveTrackerConfig(name, metaFields.toJson())
+                        vm.enroll(enrollUrl, enrollKey, name, metaFields.toJson())
+                    },
+                    enabled = !vm.enrollBusy,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (vm.enrollBusy) "Bezig met registreren…" else "Registreren / key vernieuwen")
+                }
+                vm.enrollMessage?.let {
+                    Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (trackerKey.isNotBlank()) {
+                    Text(
+                        "Na registratie heeft de app een eigen tracker-key; die verstuurt elke " +
+                            "GPS-zending. Een beheerder verifieert de tracker op het dashboard.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Metadata-editor helpers (platte, eenvoudige structuur) ──
+
+private val KNOWN_META_FIELDS = listOf(
+    "vehicle_registration" to "Kenteken",
+    "vehicle_type" to "Voertuigtype",
+    "driver" to "Bestuurder",
+    "company" to "Bedrijf",
+    "department" to "Afdeling"
+)
+
+private data class MetaFields(
+    val values: Map<String, String>,
+    val custom: List<Pair<String, String>>
+) {
+    fun withValue(key: String, v: String) = copy(values = values + (key to v))
+    fun withCustom(i: Int, k: String, v: String) =
+        copy(custom = custom.toMutableList().also { it[i] = k to v })
+    fun withCustomRemoved(i: Int) = copy(custom = custom.filterIndexed { j, _ -> j != i })
+    fun withCustomAdded(row: Pair<String, String>) = copy(custom = custom + row)
+
+    fun toJson(): String {
+        val o = org.json.JSONObject()
+        values.forEach { (k, v) -> if (v.isNotBlank()) o.put(k, v) }
+        if (custom.any { it.first.isNotBlank() && it.second.isNotBlank() }) {
+            val c = org.json.JSONObject()
+            custom.forEach { (k, v) -> if (k.isNotBlank() && v.isNotBlank()) c.put(k, v) }
+            o.put("customFields", c)
+        }
+        return o.toString()
+    }
+}
+
+private fun parseMetaFields(json: String): MetaFields {
+    val values = KNOWN_META_FIELDS.associate { (k, _) -> k to "" }.toMutableMap()
+    val custom = mutableListOf<Pair<String, String>>()
+    try {
+        val o = org.json.JSONObject(json.ifBlank { "{}" })
+        KNOWN_META_FIELDS.forEach { (k, _) ->
+            if (o.has(k)) values[k] = o.optString(k)
+        }
+        val c = o.optJSONObject("customFields")
+        if (c != null) {
+            for (key in c.keys()) custom.add(key to c.optString(key))
+        }
+    } catch (_: Exception) {
+    }
+    return MetaFields(values, custom)
 }
 
 @Composable

@@ -38,20 +38,26 @@ export async function PATCH(req: NextRequest) {
   for (const key of allowed) {
     if (key in body) data[key] = body[key];
   }
-  // Alleen een echte https-URL of leeg/verwijderd — geen arbitrary strings.
+  // Alleen een echte https-URL óf een same-origin pad ("/…") —
+  // geen arbitrary strings.
   if ("appDownloadUrl" in data) {
     const url = data.appDownloadUrl;
     if (url !== null && url !== "" && typeof url === "string") {
-      let parsed: URL;
-      try {
-        parsed = new URL(url);
-      } catch {
-        return NextResponse.json({ error: "Ongeldige download-URL" }, { status: 400 });
+      if (url.startsWith("/") && !url.startsWith("//")) {
+        // self-hosted pad (bijv. /downloads/gps-tracker.apk)
+        data.appDownloadUrl = url;
+      } else {
+        let parsed: URL;
+        try {
+          parsed = new URL(url);
+        } catch {
+          return NextResponse.json({ error: "Ongeldige download-URL" }, { status: 400 });
+        }
+        if (parsed.protocol !== "https:") {
+          return NextResponse.json({ error: "Download-URL moet https zijn" }, { status: 400 });
+        }
+        data.appDownloadUrl = url;
       }
-      if (parsed.protocol !== "https:") {
-        return NextResponse.json({ error: "Download-URL moet https zijn" }, { status: 400 });
-      }
-      data.appDownloadUrl = url;
     } else {
       data.appDownloadUrl = null;
     }

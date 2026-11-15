@@ -35,3 +35,15 @@ data class LogEntry(
     val apiName: String,
     val message: String
 )
+
+/**
+ * Offline-wachtrij voor platform-GPS-punten (Phase 2 scenario E).
+ * Bij netwerkfout wordt de volledige JSON-payload hier bewaard en na
+ * herverbinding opnieuw verstuurd (oudste eerst, begrensd aantal per tick).
+ */
+@Entity(tableName = "pending_points")
+data class PendingPoint(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val payload: String,
+    val createdAt: Long = System.currentTimeMillis()
+)
