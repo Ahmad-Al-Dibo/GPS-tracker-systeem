@@ -33,9 +33,38 @@ export async function PATCH(req: NextRequest) {
   const allowed = [
     "timezone", "unitSpeed", "telemetryIntervalS", "offlineThresholdS",
     "eventRetentionDays", "pointRetentionDays", "notifyInApp", "orgName",
+    "appDownloadUrl",
   ] as const;
   for (const key of allowed) {
     if (key in body) data[key] = body[key];
+  }
+  // Alleen een echte https-URL of leeg/verwijderd — geen arbitrary strings.
+  if ("appDownloadUrl" in data) {
+    const url = data.appDownloadUrl;
+    if (url !== null && url !== "" && typeof url === "string") {
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        return NextResponse.json({ error: "Ongeldige download-URL" }, { status: 400 });
+      }
+      if (parsed.protocol !== "https:") {
+        return NextResponse.json({ error: "Download-URL moet https zijn" }, { status: 400 });
+      }
+      data.appDownloadUrl = url;
+    } else {
+      data.appDownloadUrl = null;
+    }
+  }
+  // Numerieke settings: Sanity-limieten (negatieve retentie sloopt data).
+  for (const key of ["telemetryIntervalS", "offlineThresholdS", "eventRetentionDays", "pointRetentionDays"] as const) {
+    if (key in data) {
+      const n = Number(data[key]);
+      if (!Number.isFinite(n) || n < 1 || n > 3650) {
+        return NextResponse.json({ error: `${key} moet tussen 1 en 3650 zijn` }, { status: 400 });
+      }
+      data[key] = Math.round(n);
+    }
   }
 
   const updated = await prisma.settings.update({

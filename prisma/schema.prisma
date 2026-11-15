@@ -193,10 +193,32 @@ model IngestSource {
   /// "physical" = fysieke tracker, "app" = telefoon-app
   trackerSource  String?  @default("app") @map("tracker_source")
 
+  // ── Uniforme tracker-identiteit (Phase 2) ──
+  /// Stabiele externe identiteit: Teltonika-IMEI of app-install-UUID.
+  /// Nooit de naam — die kan veranderen. Uniek over alle trackers.
+  externalId     String?  @unique @map("external_id")
+  /// "hardware" | "mobile" | "legacy" (geen identiteit vóór Phase 2)
+  sourceType     String?  @default("legacy") @map("source_type")
+  /// Beheerders-metadata (alleen website-PATCH; ingest raakt dit nooit).
+  metadata       Json?
+  /// Apparaat-gemelde metadata (app); website toont dit apart.
+  deviceMetadata Json?    @map("device_metadata")
+  /// "unverified" (auto-ontdekt) | "verified" (admin gepaird) | "revoked"
+  verificationStatus String? @default("verified") @map("verification_status")
+  /// Eerste registratie/verbinding (backfill = createdAt bij migratie).
+  firstSeenAt    DateTime? @default(now()) @map("first_seen_at")
+  /// SHA-256 van de mobiele trackerKey (enrolment-credential); raw 1× getoond.
+  deviceSecretHash String? @unique @map("device_secret_hash")
+
   // ── Afstand-berekening ──
   lastCalcLat    Float?   @map("last_calc_lat")
   lastCalcLon    Float?   @map("last_calc_lon")
   lastCalcAt     DateTime? @map("last_calc_at")
+
+  // ── Laatst bekende apparaatwaarden (tracker-profiel, Phase 2) ──
+  lastAltitude     Float? @map("last_altitude")
+  lastHeading      Float? @map("last_heading")
+  lastBatteryLevel Int?   @map("last_battery_level")
 
   iconUrl        String?  @map("icon_url")
   createdAt      DateTime @default(now()) @map("created_at")
@@ -219,6 +241,7 @@ model IngestSource {
   @@index([licensePlate])
   @@index([trackerSerial])
   @@index([deletedAt])
+  @@index([sourceType, verificationStatus])
   @@map("ingest_sources")
 }
 
@@ -564,6 +587,9 @@ model Settings {
   pointRetentionDays Int    @default(90) @map("point_retention_days")
   notifyInApp        Boolean @default(true) @map("notify_in_app")
   orgName            String  @default("Mijn Organisatie") @map("org_name")
+  /// Download-URL van de mobiele tracker-app (leeg = niet gepubliceerd;
+  /// de website toont dan GEEN fake downloadlink).
+  appDownloadUrl     String? @map("app_download_url")
 
   updatedAt DateTime @updatedAt @map("updated_at")
 

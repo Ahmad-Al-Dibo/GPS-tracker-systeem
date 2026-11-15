@@ -20,6 +20,8 @@ export async function proxy(req: NextRequest) {
     // Machine-tot-machine: eigen key-auth in de handler
     pathname === "/api/ingest" ||
     pathname.startsWith("/api/ingest/teltonika") ||
+    // Mobiele app-provisioning: eigen X-API-Key-auth + rate-limit
+    pathname === "/api/trackers/enroll" ||
     // Healthchecks moeten onbeantwoord blijven voor load balancers
     pathname.startsWith("/api/health");
 

@@ -9,6 +9,14 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { logger, correlationId, logRequest } from "@/lib/logger";
 import { z } from "zod";
+import { findOrCreateHardwareTracker } from "@/lib/tracker-identity";
+import { createRateLimiter } from "@/lib/rate-limit";
+
+// Bescherming tegen onbeperkt auto-registreren via de publieke TCP-poort:
+// max 20 nieuwe IMEIs per uur (bestaande apparaten zijn niet beperkt).
+const AUTO_REG_KEY = "auto-hw-new-imei";
+const AUTO_REG_MAX_PER_HOUR = 20;
+const autoRegLimiter = createRateLimiter(60 * 60_000);
 
 const avlRecordSchema = z.object({
   timestamp: z.string(), // ISO of epoch-ms
@@ -85,25 +93,41 @@ export async function POST(req: NextRequest) {
   const { imei, records } = parsed.data;
   const codec = parsed.data.codec ?? null;
 
-  // Device moet geregistreerd én geautoriseerd zijn (IMEI-allowlist)
-  const device = await prisma.gpsDevice.findUnique({ where: { imei } });
-  if (!device || device.deletedAt) {
-    return NextResponse.json({ accepted: 0, error: "Device niet geregistreerd" }, { status: 403 });
+  // ── Auto-registratie (Phase 2) ──
+  // Onbekende IMEI → direct aanmaken als GpsDevice (active) + IngestSource
+  // (hardware, unverified) met koppeling; data stroomt meteen. Alleen
+  // verwijderde/ingetrokken apparaten worden geweigerd. De rate-limit voorkomt
+  // dat een aanvaller onbeperkt trackers aanmaakt via de publieke TCP-poort.
+  const registration = await findOrCreateHardwareTracker({
+    imei,
+    allowCreate: !autoRegLimiter.isLimited(AUTO_REG_KEY, AUTO_REG_MAX_PER_HOUR),
+  });
+  if (registration.reject === "deleted") {
+    return NextResponse.json({ accepted: 0, error: "Device verwijderd" }, { status: 403 });
   }
-  if (device.status !== "active") {
+  if (registration.reject === "revoked") {
+    return NextResponse.json({ accepted: 0, error: "Device ingetrokken" }, { status: 403 });
+  }
+  if (registration.reject === "rate-limited") {
     return NextResponse.json(
-      { accepted: 0, error: "Device niet geautoriseerd (status: " + device.status + ")" },
-      { status: 403 }
+      { accepted: 0, error: "Te veel nieuwe apparaten; probeer later opnieuw" },
+      { status: 429 }
     );
   }
+  if (registration.created) autoRegLimiter.record(AUTO_REG_KEY);
 
-  // Voertuig-koppeling is vereist om locaties op te slaan (US-14/US-06)
-  let vehicle = null;
-  if (device.vehicleId) {
-    vehicle = await prisma.ingestSource.findFirst({
-      where: { id: device.vehicleId, deletedAt: null },
-    });
+  const device = registration.deviceId
+    ? await prisma.gpsDevice.findUnique({ where: { id: registration.deviceId } })
+    : null;
+  if (!device) {
+    return NextResponse.json({ accepted: 0, error: "Device registratie mislukt" }, { status: 500 });
   }
+
+  // Tracker-record (unified IngestSource); null = gekoppelde bron in prullenbak
+  // → quarantine-pad hieronder (bewust ACK-en zonder opslaan).
+  const vehicle = registration.sourceId
+    ? await prisma.ingestSource.findUnique({ where: { id: registration.sourceId } })
+    : null;
 
   const receivedAt = new Date();
   let lastFixAt = device.lastFixAt;
