@@ -265,7 +265,7 @@ export default function TrackerDetailPanel({
   const devCustom = (devMeta.customFields ?? {}) as Record<string, string>;
 
   return (
-    <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="rise mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       {/* Kop */}
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-5 py-4">
         <div className="min-w-0">

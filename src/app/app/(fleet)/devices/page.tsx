@@ -589,11 +589,11 @@ export default function TrackersPage() {
           </div>
         )}
 
-        {trackers.map((t) => (
+        {trackers.map((t, i) => (
           <button
             key={t.id}
             onClick={() => setSelectedId(t.id)}
-            className="group block w-full overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className={`group rise rise-${(i % 6) + 1} block w-full overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-200`}
           >
             <div
               className="h-1"

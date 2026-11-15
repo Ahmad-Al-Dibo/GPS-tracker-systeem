@@ -170,6 +170,42 @@ function routePointIcon(kind: "start" | "mid" | "end", order: number): L.DivIcon
   });
 }
 
+// ─── Icon-caches (performance) ───
+// Dezelfde visuele staat → dezelfde DivIcon-instantie. Zonder cache maakt
+// elke poll (5s) nieuwe iconen aan en moet Leaflet élke marker opnieuw
+// verversen; met een stabiele referentie wisselt react-leaflet alleen de
+// positie. Bounded: bij >400 entries leeglopen (wordt vanzelf herbouwd).
+const vehicleIconCache = new Map<string, L.DivIcon>();
+const locationIconCache = new Map<string, L.DivIcon>();
+
+function cachedVehicleIcon(
+  emoji: string,
+  label: string,
+  moving: boolean,
+  selected: boolean,
+  showNames: boolean,
+  showSpeed: boolean,
+  speedKmh: number | null
+): L.DivIcon {
+  const key = [emoji, label, moving, selected, showNames, showSpeed, speedKmh].join("\u0000");
+  const hit = vehicleIconCache.get(key);
+  if (hit) return hit;
+  const icon = vehicleIcon(emoji, label, moving, selected, showNames, showSpeed, speedKmh);
+  if (vehicleIconCache.size > 400) vehicleIconCache.clear();
+  vehicleIconCache.set(key, icon);
+  return icon;
+}
+
+function cachedLocationIcon(loc: MapLocation): L.DivIcon {
+  const key = [loc.id, loc.name, loc.color, loc.type, loc.isExpired].join("\u0000");
+  const hit = locationIconCache.get(key);
+  if (hit) return hit;
+  const icon = locationIcon(loc);
+  if (locationIconCache.size > 400) locationIconCache.clear();
+  locationIconCache.set(key, icon);
+  return icon;
+}
+
 /** Centreren op geselecteerd voertuig; volgen bij update */
 function MapController({
   vehicles,
@@ -871,7 +907,7 @@ export default function TrackingMap({
 
         {/* Beheerde locaties */}
         {locations.map((loc) => (
-          <Marker key={loc.id} position={[loc.latitude, loc.longitude]} icon={locationIcon(loc)}>
+          <Marker key={loc.id} position={[loc.latitude, loc.longitude]} icon={cachedLocationIcon(loc)}>
             <Popup>
               <strong style={{ fontSize: 13 }}>
                 {loc.type === "temporary" ? "🟠" : "🔵"} {loc.name}
@@ -931,7 +967,7 @@ export default function TrackingMap({
           <Marker
             key={v.id}
             position={[v.latitude, v.longitude]}
-            icon={vehicleIcon(
+            icon={cachedVehicleIcon(
               v.iconEmoji,
               v.name,
               v.moving,

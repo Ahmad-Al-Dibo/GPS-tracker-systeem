@@ -125,8 +125,11 @@ export default function OverviewPage() {
 
       {/* Stats */}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:mb-6 lg:grid-cols-4 lg:gap-4">
-        {stats.map((s) => (
-          <div key={s.label} className="stat-card rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        {stats.map((s, i) => (
+          <div
+            key={s.label}
+            className={`stat-card rise rise-${i + 1} rounded-xl border border-slate-200 bg-white p-4 shadow-sm`}
+          >
             <div className="flex items-center gap-3">
               <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-lg ${s.color}`}>
                 {s.icon}

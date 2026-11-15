@@ -350,8 +350,9 @@ export default function RulesPage() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200">
-        <table className="w-full text-sm">
+      {/* overflow-x: mobiel schuift de tabel horizontaal i.p.v. de pagina breken */}
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-white text-left text-xs text-slate-400">
             <tr>
               <th className="px-4 py-3">Naam</th>

@@ -15,7 +15,12 @@ export async function GET() {
   // Soft delete: verwijderde voertuigen tellen niet mee
   where.deletedAt = null;
 
-  const sources = await prisma.ingestSource.findMany({ where });
+  // Alleen de velden die de tellingen gebruiken: geen Json/description/
+  // voertuigvelden over de hele vloot heen slepen bij elke dashboard-poll.
+  const sources = await prisma.ingestSource.findMany({
+    where,
+    select: { id: true, latitude: true, receivedAt: true, sampledAt: true, speedMps: true },
+  });
   const sourceIds = sources.map((s) => s.id);
 
   const [openEvents, openTasks, recentEvents, unreadNotifs] =

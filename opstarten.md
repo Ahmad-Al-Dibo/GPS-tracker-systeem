@@ -114,6 +114,10 @@ npm run test:locations
 # Kaartpagina-smoke in echte browser (Playwright; server moet draaien)
 npm run test:map
 
+# Phase 2: tracker-scenario's A/B/C/D/F (API) + Trackers-UI smoke (Playwright)
+npm run test:trackers
+npm run test:trackers-ui
+
 # GPS-pijplijn: dedupe/edge-tests tegen /api/ingest/teltonika (server + .env)
 node scripts/test-dedupe.mjs
 node scripts/test-ingest-edge.mjs

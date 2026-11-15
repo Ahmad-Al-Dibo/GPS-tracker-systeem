@@ -25,7 +25,15 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/app/settings", label: "Instellingen", icon: "⚙️" },
 ];
 
-const MOBILE_NAV = NAV_ITEMS.slice(0, 4);
+// Mobiele bottom-nav: tracking-kern (dashboard, trackers, kaart, historie) —
+// niet de eerste 4 van de desktop-volgorde; op een telefoon wil je vóórál
+// kaart en trackers binnen handbereik.
+const MOBILE_NAV = [
+  NAV_ITEMS[0], // Dashboard
+  NAV_ITEMS.find((i) => i.href === "/app/devices")!, // Trackers
+  NAV_ITEMS.find((i) => i.href === "/app/map")!, // Kaart
+  NAV_ITEMS.find((i) => i.href === "/app/history")!, // Historie
+];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

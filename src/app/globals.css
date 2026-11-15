@@ -460,3 +460,55 @@ body {
 .location-edit-popup {
   z-index: 9999;
 }
+
+/* --- Phase 2: subtiele animaties + mobile-first details --- */
+
+/* Kaart-/lijstkaarten laten zachtjes opkomen bij het eerste rendermoment. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise {
+  animation: rise-in 240ms ease-out both;
+}
+/* Gestaffelde entree voor lijsten (max 6 stappen voorkomt "wachtrij-gevoel"). */
+.rise-1 { animation-delay: 40ms; }
+.rise-2 { animation-delay: 80ms; }
+.rise-3 { animation-delay: 120ms; }
+.rise-4 { animation-delay: 160ms; }
+.rise-5 { animation-delay: 200ms; }
+.rise-6 { animation-delay: 240ms; }
+
+/* Skeleton-shimmer voor laad-plekhouder. */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #eef2f7 25%, #f8fafc 50%, #eef2f7 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* Vloeiende statuswisselingen (badge/verbindingskleuren). */
+.tracker-badge {
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+/* Toegankelijkheid: animaties respecteren reduced-motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
