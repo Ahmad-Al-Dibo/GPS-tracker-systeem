@@ -18,7 +18,8 @@
     "test:jobs": "tsx scripts/test-jobs.mts",
     "test:locations": "tsx scripts/test-locations.mts",
     "test:map": "tsx scripts/test-map-smoke.mts",
-    "test:trackers": "tsx scripts/test-trackers.mts"
+    "test:trackers": "tsx scripts/test-trackers.mts",
+    "test:trackers-ui": "tsx scripts/test-trackers-ui.mts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

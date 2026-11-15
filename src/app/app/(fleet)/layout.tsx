@@ -11,7 +11,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/app", label: "Dashboard", icon: "🏠" },
   { href: "/app/vehicles", label: "Voertuigen", icon: "🚗" },
   { href: "/app/persons", label: "Personen", icon: "👥" },
-  { href: "/app/devices", label: "Trackers & Apparaten", icon: "📡" },
+  { href: "/app/devices", label: "Trackers", icon: "📡" },
   { href: "/app/apikeys", label: "API Keys", icon: "🔑" },
   { href: "/app/map", label: "Kaart", icon: "🗺️" },
   { href: "/app/history", label: "Historie", icon: "📜" },

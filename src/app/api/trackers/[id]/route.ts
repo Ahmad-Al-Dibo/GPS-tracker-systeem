@@ -60,6 +60,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     accuracyMeters: source.accuracyMeters,
     metadata: source.metadata ?? null,
     deviceMetadata: source.deviceMetadata ?? null,
+    description: source.description,
     // Voertuig-facade (dezelfde rij; voertuigvelden blijven gescheiden)
     licensePlate: source.licensePlate,
     brand: source.brand,
