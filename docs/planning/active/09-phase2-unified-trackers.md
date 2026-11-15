@@ -1,6 +1,6 @@
 # Plan 09 — Phase 2: Core logic, automatische tracker-registratie & mobile-first app
 
-**Status:** actief
+**Status:** afgerond (2026-11-15)
 **Prioriteit:** HOOG — hart van het platform (identiteit + registratie + mobiel)
 **Datum:** 2026-11-14
 
@@ -95,26 +95,26 @@ gekoppeld via `vehicleId`. Eén management-UI, twee protocol-specifieke details.
 
 ## Stappen (commit na elke groene stap)
 
-- [ ] **S1 — Migratie + libs**: `add_tracker_identity` (additief + backfill),
+- [x] **S1 — Migratie + libs**: `add_tracker_identity` (additief + backfill),
       `src/lib/rate-limit.ts` (uit login-route gehaald), `src/lib/tracker-identity.ts`
       (metadata-Zod, find-or-create, naam-regels).
-- [ ] **S2 — Backend flows**: `/api/trackers/enroll`, tracker-key-pad in
+- [x] **S2 — Backend flows**: `/api/trackers/enroll`, tracker-key-pad in
       `/api/ingest`, auto-registratie in `/api/ingest/teltonika` (+ nieuwe-IMEI
       rate-limit).
-- [ ] **S3 — Trackers-API**: unified GET (zoek/filter/paginatie),
+- [x] **S3 — Trackers-API**: unified GET (zoek/filter/paginatie),
       GET/[id] detail (punten+device+metadata), PATCH (admin: naam/metadata),
       verify/revoke; `Settings.appDownloadUrl`.
-- [ ] **S4 — Website**: devices-pagina ombouwen tot uniforme Trackers-UI
+- [x] **S4 — Website**: devices-pagina ombouwen tot uniforme Trackers-UI
       (cards mobile / table desktop, detail, verificatie, install-panel),
       wees-pagina weg, nav bijwerken.
-- [ ] **S5 — Android**: install-UUID (persistent), Tracker-tab (naam,
+- [x] **S5 — Android**: install-UUID (persistent), Tracker-tab (naam,
       metadata-editor, enroll, status: GPS/accuracy/batterij/laatste
       verzending), platform-sender met rijke payload, offline queue (Room) +
       retry, naam/metadata-sync, batterij/altitude/heading.
-- [ ] **S6 — Design & mobile-first**: animaties + reduced-motion, responsive
+- [x] **S6 — Design & mobile-first**: animaties + reduced-motion, responsive
       cards/tables, loading-states, navigatie-check.
-- [ ] **S7 — Performance**: TrackingMap icon-cache, paginatie, render-checks.
-- [ ] **S8 — Tests & rapport**: API-tests scenarios A/B/C/D/F, Playwright
+- [x] **S7 — Performance**: TrackingMap icon-cache, paginatie, render-checks.
+- [x] **S8 — Tests & rapport**: API-tests scenarios A/B/C/D/F, Playwright
       trackers-UI, volledige Phase-1-suite, Android-build (indien SDK),
       eindrapport.
 
@@ -126,3 +126,31 @@ gekoppeld via `vehicleId`. Eén management-UI, twee protocol-specifieke details.
 - Bestaande records: geen duplicaten bij herhaalde data (scenario C).
 - Revoked device wordt geweigerd; trackerKey steelt geen andere tracker.
 - Alle Phase-1 tests blijven groen; nieuwe tests groen.
+
+## Uitvoeringsnoties
+
+- **Migraties:** twee additieve migraties, handmatig geschreven (non-interactive
+  shell blokkeert `migrate dev`) en toegepast met `migrate deploy`:
+  `20261115090000_add_tracker_identity` (7 kolommen + backfill: bestaande
+  records = verified, firstSeenAt=createdAt, sourceType uit tracker_source) en
+  `20261115091500_add_tracker_live_fields` (last_altitude/heading/battery).
+- **Verificatiemodel:** hardware-apparaat-status (pending/active/revoked) blijft
+  bestaan; `verificationStatus` op de tracker is de nieuwe admin-pairing-laag
+  (verify/revoke spiegelt naar GpsDevice). Pending-records accepteren nu data —
+  alleen `revoked` wordt geweigerd (verwijdert de handmatige activatie-gate).
+- **Beveiligingsgrens (gedocumenteerd):** Teltonika AVL kent geen device-geheim;
+  IMEI alleen is dus geen sterk bewijs voor geverifieerde apparaten. Grens =
+  tunnel+TLS+HTTP-ingest-key, admin-pairing per IMEI en revoke. Mobiel is wel
+  credential-gedreven (trackerKey-hash, enrolment bound aan eigenaar-API-key).
+- **Rate-limits:** enrolment 30/uur/IP; nieuwe-IMEI-aanmaak 20/uur (in-memory);
+  login-limiter uit Phase 1 gedeeld via `lib/rate-limit.ts`.
+- **APK:** `assembleDebug` gebouwd met de lokale Android-SDK en gediend vanuit
+  `public/downloads/gps-tracker.apk` (11.7 MB); `appDownloadUrl` =
+  `/downloads/gps-tracker.apk`. Debug-getekend = intern gebruik; release-
+  signing = workflow-stap voor distributie buiten het bedrijf.
+- **UI-keuzes:** de oude per-apparaat "voertuig-toewijzing"-knop is uit de
+  lijst gehaald (API blijft bestaan) — automatische link is de default; het
+  handmatige formulier behoudt de optie bij creatie. Orphan `/app/trackers`
+  verwijderd (nooit in nav).
+- **Getest:** 34 scenario-checks (A/B/C/D/F), 15 UI-smokes, 19 map-smokes,
+  e2e 11, trash 72, locations 59, jobs 28, dedupe/edge, TCP-selftest 4/4.
